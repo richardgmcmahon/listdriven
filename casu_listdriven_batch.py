@@ -699,10 +699,16 @@ iretry_max=1
 nskip_files=0
 delaytime=1.0
 
-#host='rgm@apm14.ast.cam.ac.uk:'
-#host='rgm@apm26.ast.cam.ac.uk:'
-#host='rgm@apm25.ast.cam.ac.uk:'
-host='rgm@apm21.ast.cam.ac.uk:'
+import ConfigParser
+config = ConfigParser.RawConfigParser()
+
+# read config file
+config.read('querydqc.cfg')
+
+host = config.get(db,'host')
+user = config.get(db,'user')
+#host='rgm@apm21.ast.cam.ac.uk:'
+host=user+'@'+host+':'
 
 
 
