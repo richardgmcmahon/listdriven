@@ -38,14 +38,17 @@ subprocess.Popen returns a Popen object, which you can use to communicate with t
 So subprocess.call is basically equivalent to the following code, and only exists for convenience:
 
 
+
 def call(*popenargs, timeout=None, **kwargs):
-    """Run command with arguments.  Wait for command to complete or
+    
+    Run command with arguments.  Wait for command to complete or
     timeout, then return the returncode attribute.
 
     The arguments are the same as for the Popen constructor.  Example:
 
     retcode = call(["ls", "-l"])
-    """
+
+
     with Popen(*popenargs, **kwargs) as p:
         try:
             return p.wait(timeout=timeout)
@@ -703,10 +706,9 @@ import ConfigParser
 config = ConfigParser.RawConfigParser()
 
 # read config file
-config.read('querydqc.cfg')
-
-host = config.get(db,'host')
-user = config.get(db,'user')
+config.read('casu_listdriven_batch.cfg')
+host = config.get('casu','host')
+user = config.get('casu','user')
 #host='rgm@apm21.ast.cam.ac.uk:'
 host=user+'@'+host+':'
 
