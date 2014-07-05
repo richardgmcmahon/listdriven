@@ -2,9 +2,10 @@
 # $Id: listdriven_bulk.py,v 1.1 2010/10/21 14:28:26 rgm Exp rgm $    
 """ 
 
-
-
   WISHLIST: 
+
+   check the lockfile approach for race conditions and cases
+   where program aborts; investigate lockfile methodology
 
    could look at option to cache the image files on /tmp if this
    would give speed improvement; call stagepath 
@@ -20,6 +21,7 @@
 
   verbose levels; turn off/reduce the ssh debug levels
 
+  could add time to subprocess call to get some profiling info
 
   subprocess.call; subprocess.Popen; os.popen
 
@@ -636,6 +638,287 @@ def process_image(files=None, outpath=None, Search=False):
     logdata = "Total elapsed time %.3f seconds" % (time.time() - starttime)
     logger(flog, logdata)
 
+
+def process_catalogue(file=None, outpath=None, radius=2.0):
+
+    catfile = file[0][0:-4] + '_cat.fits'
+    logdata='Process catalogue file: %s' % (catfile)
+    logger(flog, logdata)
+
+    deltatime=time.time()
+
+    # strip of the path from the filename
+    ipos=files[0].rfind('/')
+    listfile = file[0][ipos+1:] + '.radec'
+    logdata='Process search list file: %s' % (listfile)
+
+    outfile=outpath + listfile + '_search.fits'
+    logdata='Output file: %s' % outfile
+    logger(flog, logdata)
+    listfile = listpath + listfile
+    if os.path.exists(outfile):
+      print('Skipping since outfile already exists for %s.' % (outfile))
+      return
+        
+    lockfile=outfile + '.lock' 
+    print('lockfile: ', lockfile)
+    if os.path.exists(lockfile):
+      logdata='Skipping since lockfile exists: ' + lockfile
+      logger(flog, logdata) 
+      logdata = "Total elapsed time %.3f seconds" % (time.time() - starttime)
+      logger(flog, logdata)
+      return
+
+    # create lockfile
+    lkfile = open(lockfile, 'wt')
+    logdata = "Create lockfile %s" % lockfile
+    logger(flog, logdata)
+
+    # write pid and hostname into lockfile
+    lkfile.write(strftime("%Y-%m-%dT%H-%M-%S", gmtime()))
+    lkfile.write(':pid: '+ str(pid) + '\n')
+    lkfile.flush()
+
+    #lockfile=listfile + '.lock.' + str(pid)
+    #logdata = "Lockfile: " + lockfile
+    #logger(flog, logdata)
+    # use flock module
+    #lock = flock(lockfile, True).acquire()
+
+    if not SelfTest and os.access(listfile, os.F_OK): 
+      # Read list file skipping comment lines
+      records = [item for item in open(listfile) if item[0]<>'#']
+      numSources = len(records)
+      logdata = 'Number of sources in listfile: %d' % numSources
+      logger(flog, logdata)
+
+    if not SelfTest and not os.access(listfile, os.F_OK): 
+      logdata='List file: %s' % listfile
+      logger(flog, logdata)
+      logdata='List file problem'
+      logger(flog, logdata)
+      key=raw_input("Enter any key to continue: ")
+
+    # build the scp command; note spaces between each parameter
+    # use -v to debug the scp/ssh 
+    #cmd ='scp -v -i ~/.ssh/id_dsa_nk ' \
+    command ='scp  -i ~/.ssh/id_dsa_nk ' \
+      + ' '+ host + filename \
+      + ' ' + stagepath +'/. '
+
+    logdata=command
+    logger(flog, logdata)
+
+    itry=0
+    Transfered=False
+
+    while (itry < iretry_max) and not Transfered:
+      itry=itry+1
+      if debug: 
+        print(command)
+      #result=os.popen(command)
+      #help(result)
+      result=subprocess.Popen(command, 
+       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
+      output, errors = result.communicate()
+      #result=subprocess.check_output(command)
+      #help(result)
+      print('subprocesss output: ', output)
+      print('subprocess errors: ', errors)
+      #while True:
+      #  line = errors.readline()
+      #  if line == "": break
+      #  logdata = line
+      #  logger(flog, logdata)
+      #  print(line,)
+      #  if debug: key=raw_input("Enter any key to continue: ")
+
+      # check the files was transfered
+      ipos=filename.rfind('/')
+      imagefile = stagepath + filename[ipos+1:] 
+
+      if os.access(imagefile, os.F_OK):
+        Transfered=True
+
+      if not os.access(imagefile, os.F_OK):
+        scpfailurefile=outfile + '.scpfailure' 
+        scpfailurefileh = open(scpfailurefile, 'wt')
+
+        logdata='WARNING: image file NOT transfered: %s' % imagefile
+        logger(flogerr, logdata)
+        Transfered=False
+        delay=delaytime*(itry*itry)
+        logdata='WAITING: %s seconds' % delay
+        logger(flog, logdata)
+        time.sleep(delay)
+        continue
+
+      command ='scp -i ~/.ssh/id_dsa_nk ' \
+       + ' '+ host + confname \
+       + ' ' + stagepath +'/. '
+
+      logdata=command
+      logger(flog, logdata)
+
+      if debug: print(command)
+      usage = resource.getrusage(resource.RUSAGE_SELF)
+      for name, desc in [
+        ('ru_utime', 'User time'),
+        ('ru_stime', 'System time'),
+        ]:
+        print('%-25s (%-10s) = %s' % (desc, name, getattr(usage, name)))
+
+      #result=os.popen(command)
+      result=subprocess.Popen(command, 
+       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
+      output, errors = result.communicate()
+      #help(result)
+      print('subprocesss output: ', output)
+      print('subprocess errors: ', errors)
+      usage = resource.getrusage(resource.RUSAGE_SELF)  
+      for name, desc in [
+        ('ru_utime', 'User time'),
+        ('ru_stime', 'System time'),
+        ]:
+        print('%-25s (%-10s) = %s' % (desc, name, getattr(usage, name)))
+
+      #while True:
+      #  line = result.readline()
+      #  if line == "": break
+      #  logdata = line
+      #  logger(flog, logdata)
+      #  print(line,)
+      #  if debug: key=raw_input("Enter any key to continue: ")
+
+    # check the files was transfered
+    ipos=confname.rfind('/')
+    confmapfile=stagepath + confname[ipos+1:]
+    if not os.access(confmapfile, os.F_OK):
+      n_errors=n_errors+1
+      logdata= 'WARNING: confmap file NOT transferred: ', confmapfile
+      logger(flog, logdata)
+      logger(flogerr, logdata)
+      if os.path.exists(lockfile):
+        logdata = "Delete lockfile %s " % lockfile
+        logger(flog, logdata)
+        os.remove(lockfile)       
+
+
+    if options.pawprints:
+      # read the file to determine the constituent pawprints
+      get_vista_pawprints(imagefile=imagefile, filename=filename, 
+       stagepath=stagepath)
+
+    if SelfTest or Search:
+      print('SelfTest/Search catalogue file: ' + catfile)
+      if os.path.exists(catfile):
+        logdata='catalogue already exists %s.' % (catfile)
+        logger(flog, logdata)
+
+      if not os.path.exists(catfile):
+        command ='scp -i ~/.ssh/id_dsa_nk ' \
+         + ' '+ host + catfile \
+         + ' ' + stagepath +'/. '
+
+        logdata=command
+        logger(flog, logdata)
+
+        if debug: print(command)
+        result=subprocess.Popen(command, 
+         stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
+        output, errors = result.communicate()
+        #result=os.popen(command)
+        #result=subprocess.Popen(command)  
+        #while True:
+        #  line = result.readline()
+        #  if line == "": break
+        #  logdata = line
+        #  logger(flog, logdata)
+        #  print(line,)
+        #  if debug: key=raw_input("Enter any key to continue: ")
+      
+      print('SelfTest cataloge file transferred: ' + catfile)
+
+      ipos=catfile.rfind('/')
+      catfile= stagepath + catfile[ipos:]
+      if os.access(catfile, os.F_OK):
+        print('catfile transfered OK: ',catfile)
+      if not os.access(catfile, os.F_OK):
+        print('WARNING: catfile NOT transfered: ',catfile)
+        key=raw_input("Enter any key to continue: ")
+
+      listfile=catfile
+
+    logdata = "Delta elapsed time %.3f seconds" % (time.time() - deltatime)
+    logger(flog, logdata)
+
+    if not DryRun:
+      logdata= 'Start processing the image data'
+      logger(flog, logdata)
+
+      if debug: 
+        trace = traceback.extract_stack()[-1]
+        print(os.path.basename(trace[0]), ' line :', str(trace[1]))
+        key=raw_input("Debug: Enter any key to continue: ")
+
+      imcore_list_run(options=options, imagefile=imagefile,
+        confmapfile=confmapfile, listfile=listfile, outfile=outfile)
+
+      print('listdriven photometry completed')
+      #key=raw_input("Enter any key to continue: ")
+
+    print('options.cache: ',options.cache)
+    if os.path.exists(imagefile) and not options.cache:
+      print('Deleting data files used')
+      print('Remove the image file:' + imagefile)
+      try:
+        os.remove(imagefile)       
+      except OSError as (errno, strerror):
+        logdata ="OS error({0}): {1}".format(errno, strerror)
+        logger(flogerr, logdata)
+        logdata = "error removing imagefile %s " % imagefile        
+        logger(flogerr, logdata)
+        pass
+
+    if os.path.exists(confmapfile) and not options.cache:
+      print('Remove the confidence map:' + confmapfile)
+      try:
+        os.remove(confmapfile)       
+      except:
+        logdata = "error removing confmapfile %s " % confmapfile        
+        logger(flogerr, logdata)
+        pass
+
+    if SelfTest:
+      if os.path.exists(catfile)  and not options.cache:
+        print('Remove the catalogue fits file:' + catfile)
+        try:
+          os.remove(catfile)       
+        except:
+          logdata = "error removing cataloge file%s " % catfile        
+          logger(flogerr, logdata)
+          pass
+
+    if os.path.exists(lockfile):
+      logdata = "Delete lockfile %s " % lockfile
+      logger(flog, logdata)
+      command ='rm -v ' + lockfile
+      try:
+        os.remove(lockfile)          
+      except OSError as (errno, strerror):
+        logdata ="OS error({0}): {1}".format(errno, strerror)
+        logger(flogerr, logdata)
+        logdata = "error removing lockfile%s " % lockfile        
+        logger(flogerr, logdata)
+        pass
+
+    logdata = "Delta elapsed time %.3f seconds" % (time.time() - deltatime)
+    logger(flog, logdata)
+
+    logdata = "Total elapsed time %.3f seconds" % (time.time() - starttime)
+    logger(flog, logdata)
+
+
     
 
 
@@ -870,7 +1153,13 @@ logger(flog, logdata)
 logdata = 'Opening file: %s' % infile
 logger(flog, logdata)
 
-numLines = len(open(infile).readlines())
+try:
+  numLines = len(open(infile).readlines())
+except:
+  traceback.print_exc(file=sys.stdout)
+  print('input file cannot be opened; exiting....') 
+  sys.exit(1)  
+
 logdata = 'Input file has length: %d' % numLines
 logger(flog, logdata)
 
