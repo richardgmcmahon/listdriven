@@ -638,6 +638,69 @@ def process_image(files=None, outpath=None, Search=False):
     logdata = "Total elapsed time %.3f seconds" % (time.time() - starttime)
     logger(flog, logdata)
 
+def get_file(host=None, infile=None, transport='scp'):
+    """
+    scp file from remote host
+    this could also be a http etc
+    """    
+
+    # build the scp command; note spaces between each parameter
+    # use -v to debug the scp/ssh 
+    #cmd ='scp -v -i ~/.ssh/id_dsa_nk ' 
+    scp_verbose='-v'
+    scp_verbose=''
+
+    # ssh key location could be in cfg
+    command ='scp ' + scp_verbose + ' -i ~/.ssh/id_dsa_nk ' \
+      + ' '+ host + catfile \
+      + ' ' + stagepath +'/. '
+
+    logdata=command
+    logger(flog, logdata)
+
+    itry=0
+    Transfered=False
+
+    while (itry < iretry_max) and not Transfered:
+      itry=itry+1
+      if debug: 
+        print(command)
+      #result=os.popen(command)
+      #help(result)
+      result=subprocess.Popen(command, 
+       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
+      output, errors = result.communicate()
+      #result=subprocess.check_output(command)
+      #help(result)
+      print('subprocesss output: ', output)
+      print('subprocess errors: ', errors)
+      #while True:
+      #  line = errors.readline()
+      #  if line == "": break
+      #  logdata = line
+      #  logger(flog, logdata)
+      #  print(line,)
+      #  if debug: key=raw_input("Enter any key to continue: ")
+
+      # check the files was transfered
+      ipos=infile.rfind('/')
+      outfile = stagepath + infile[ipos+1:] 
+
+      if os.access(outfile, os.F_OK):
+        Transfered=True
+
+      if not os.access(outfile, os.F_OK):
+        scpfailurefile=outfile + '.scpfailure' 
+        scpfailurefileh = open(scpfailurefile, 'wt')
+
+        logdata='WARNING: file NOT transfered: %s' % infile
+        logger(flogerr, logdata)
+        Transfered=False
+        delay=delaytime*(itry*itry)
+        logdata='WAITING: %s seconds' % delay
+        logger(flog, logdata)
+        time.sleep(delay)
+        continue
 
 def process_catalogue(file=None, outpath=None, radius=2.0):
 
@@ -685,169 +748,21 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
     # use flock module
     #lock = flock(lockfile, True).acquire()
 
-    if not SelfTest and os.access(listfile, os.F_OK): 
+    if os.access(listfile, os.F_OK): 
       # Read list file skipping comment lines
       records = [item for item in open(listfile) if item[0]<>'#']
       numSources = len(records)
       logdata = 'Number of sources in listfile: %d' % numSources
       logger(flog, logdata)
 
-    if not SelfTest and not os.access(listfile, os.F_OK): 
+    if not os.access(listfile, os.F_OK): 
       logdata='List file: %s' % listfile
       logger(flog, logdata)
       logdata='List file problem'
       logger(flog, logdata)
       key=raw_input("Enter any key to continue: ")
 
-    # build the scp command; note spaces between each parameter
-    # use -v to debug the scp/ssh 
-    #cmd ='scp -v -i ~/.ssh/id_dsa_nk ' \
-    command ='scp  -i ~/.ssh/id_dsa_nk ' \
-      + ' '+ host + filename \
-      + ' ' + stagepath +'/. '
-
-    logdata=command
-    logger(flog, logdata)
-
-    itry=0
-    Transfered=False
-
-    while (itry < iretry_max) and not Transfered:
-      itry=itry+1
-      if debug: 
-        print(command)
-      #result=os.popen(command)
-      #help(result)
-      result=subprocess.Popen(command, 
-       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
-      output, errors = result.communicate()
-      #result=subprocess.check_output(command)
-      #help(result)
-      print('subprocesss output: ', output)
-      print('subprocess errors: ', errors)
-      #while True:
-      #  line = errors.readline()
-      #  if line == "": break
-      #  logdata = line
-      #  logger(flog, logdata)
-      #  print(line,)
-      #  if debug: key=raw_input("Enter any key to continue: ")
-
-      # check the files was transfered
-      ipos=filename.rfind('/')
-      imagefile = stagepath + filename[ipos+1:] 
-
-      if os.access(imagefile, os.F_OK):
-        Transfered=True
-
-      if not os.access(imagefile, os.F_OK):
-        scpfailurefile=outfile + '.scpfailure' 
-        scpfailurefileh = open(scpfailurefile, 'wt')
-
-        logdata='WARNING: image file NOT transfered: %s' % imagefile
-        logger(flogerr, logdata)
-        Transfered=False
-        delay=delaytime*(itry*itry)
-        logdata='WAITING: %s seconds' % delay
-        logger(flog, logdata)
-        time.sleep(delay)
-        continue
-
-      command ='scp -i ~/.ssh/id_dsa_nk ' \
-       + ' '+ host + confname \
-       + ' ' + stagepath +'/. '
-
-      logdata=command
-      logger(flog, logdata)
-
-      if debug: print(command)
-      usage = resource.getrusage(resource.RUSAGE_SELF)
-      for name, desc in [
-        ('ru_utime', 'User time'),
-        ('ru_stime', 'System time'),
-        ]:
-        print('%-25s (%-10s) = %s' % (desc, name, getattr(usage, name)))
-
-      #result=os.popen(command)
-      result=subprocess.Popen(command, 
-       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
-      output, errors = result.communicate()
-      #help(result)
-      print('subprocesss output: ', output)
-      print('subprocess errors: ', errors)
-      usage = resource.getrusage(resource.RUSAGE_SELF)  
-      for name, desc in [
-        ('ru_utime', 'User time'),
-        ('ru_stime', 'System time'),
-        ]:
-        print('%-25s (%-10s) = %s' % (desc, name, getattr(usage, name)))
-
-      #while True:
-      #  line = result.readline()
-      #  if line == "": break
-      #  logdata = line
-      #  logger(flog, logdata)
-      #  print(line,)
-      #  if debug: key=raw_input("Enter any key to continue: ")
-
-    # check the files was transfered
-    ipos=confname.rfind('/')
-    confmapfile=stagepath + confname[ipos+1:]
-    if not os.access(confmapfile, os.F_OK):
-      n_errors=n_errors+1
-      logdata= 'WARNING: confmap file NOT transferred: ', confmapfile
-      logger(flog, logdata)
-      logger(flogerr, logdata)
-      if os.path.exists(lockfile):
-        logdata = "Delete lockfile %s " % lockfile
-        logger(flog, logdata)
-        os.remove(lockfile)       
-
-
-    if options.pawprints:
-      # read the file to determine the constituent pawprints
-      get_vista_pawprints(imagefile=imagefile, filename=filename, 
-       stagepath=stagepath)
-
-    if SelfTest or Search:
-      print('SelfTest/Search catalogue file: ' + catfile)
-      if os.path.exists(catfile):
-        logdata='catalogue already exists %s.' % (catfile)
-        logger(flog, logdata)
-
-      if not os.path.exists(catfile):
-        command ='scp -i ~/.ssh/id_dsa_nk ' \
-         + ' '+ host + catfile \
-         + ' ' + stagepath +'/. '
-
-        logdata=command
-        logger(flog, logdata)
-
-        if debug: print(command)
-        result=subprocess.Popen(command, 
-         stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
-        output, errors = result.communicate()
-        #result=os.popen(command)
-        #result=subprocess.Popen(command)  
-        #while True:
-        #  line = result.readline()
-        #  if line == "": break
-        #  logdata = line
-        #  logger(flog, logdata)
-        #  print(line,)
-        #  if debug: key=raw_input("Enter any key to continue: ")
-      
-      print('SelfTest cataloge file transferred: ' + catfile)
-
-      ipos=catfile.rfind('/')
-      catfile= stagepath + catfile[ipos:]
-      if os.access(catfile, os.F_OK):
-        print('catfile transfered OK: ',catfile)
-      if not os.access(catfile, os.F_OK):
-        print('WARNING: catfile NOT transfered: ',catfile)
-        key=raw_input("Enter any key to continue: ")
-
-      listfile=catfile
+    get_file(host=host, infile=catfile, transport='scp')
 
     logdata = "Delta elapsed time %.3f seconds" % (time.time() - deltatime)
     logger(flog, logdata)
@@ -996,11 +911,6 @@ user = config.get('casu','user')
 host=user+'@'+host+':'
 
 
-
-# OptionParser is deprecated so need to replace with argparse
-# see section on Upgrading optparse code in argparse
-parser = OptionParser()
-
 from time import strftime, gmtime, sleep
 
 pid=os.getpid()
@@ -1008,86 +918,101 @@ hostname=socket.gethostname()
 
 time_str = strftime("%Y-%m-%dT%H-%M-%S", gmtime())
 
-parser.add_option("-i", "--input", dest = "infile", 
+
+
+# OptionParser is deprecated so need to replace with argparse
+# see section on Upgrading optparse code in argparse
+#parser = OptionParser()
+
+import argparse
+parser = argparse.ArgumentParser()
+
+parser.add_argument("-i", "--input", dest = "infile", 
  help = "Input filename")
 
-parser.add_option("--listpath", dest = "listpath", 
+parser.add_argument("--listpath", dest = "listpath", 
  default = './',
  help = "Field list file path")
 
-parser.add_option("-o", "--outpath", dest = "outpath", 
+parser.add_argument("-o", "--outpath", dest = "outpath", 
  default = '.',
  help = "Output path")
 
-parser.add_option("--cache", action = "store_true", dest = "cache", 
+parser.add_argument("--cache", action = "store_true", dest = "cache", 
  default = False, 
  help = "cache casu files")
 
-parser.add_option("--stagepath", dest = "stagepath", 
+parser.add_argument("--stagepath", dest = "stagepath", 
  help = "Data staging area  path [Default outpath]")
 
-parser.add_option("--logpath", dest = "logpath", 
+parser.add_argument("--logpath", dest = "logpath", 
  default = './',
  help = "Output path")
 
-parser.add_option("--skip", dest = "nskip_files", 
+parser.add_argument("--skip", dest = "nskip_files", 
  default = '0',
  help = "Number of files to skip")
 
-parser.add_option("--nfiles", dest = "nfiles", 
+parser.add_argument("--nfiles", dest = "nfiles", 
  default = '1',
  help = "Number of files to process")
 
-parser.add_option("--debug", action = "store_true", dest = "debug", 
+parser.add_argument("--debug", action = "store_true", dest = "debug", 
  default = False, 
  help = "print status messages to stdout")
 
-parser.add_option("--selftest", action = "store_true", dest = "selftest", 
+parser.add_argument("--selftest", action = "store_true", dest = "selftest", 
  default = False, 
  help = "run listphot using imcore catalogue from image")
 
-parser.add_option("--pawprints", action = "store_true", dest = "pawprints", 
+parser.add_argument("--dryrun", dest = "dryrun", 
+ default = False, 
+ help = "run Dry Run mode that test the input file handling")
+
+
+parser.add_argument("--pawprints", action = "store_true", dest = "pawprints", 
  default = False, 
  help = "process constituent pawprints")
 
-parser.add_option("--getcat", dest = "getcat", 
+parser.add_argument("--getcat", dest = "getcat", 
  default = False, 
  help = "copy catalogue from archive location")
 
-parser.add_option("--search", action = "store_true", dest = "search", 
+parser.add_argument("--search", action = "store_true", dest = "search", 
  default = False, 
  help = "Search catalogue")
 
-parser.add_option("--radius", dest = "search_radius", 
+parser.add_argument("--radius", dest = "search_radius", 
  default = '4',
  help = "Catalogue search radius (arc seconds)")
 
-parser.add_option("--vhs", action = "store_true", dest = "vhs", 
+parser.add_argument("--vhs", action = "store_true", dest = "vhs", 
  default = False, 
  help = "run using vhs parameters")
 
-parser.add_option("-v", "--verbose", 
+parser.add_argument("-v", "--verbose", 
  action = "store_true", dest = "verbose", 
  default = False,
  help = "print status messages to stdout")
 
-parser.add_option("-w", "--wait", 
+parser.add_argument("-w", "--wait", 
  dest = "wait", default = "0",
  help = "wait time between queries in seconds (0 = wait until query finishes) [0]")
 
-parser.add_option("--clobber", dest = "clobber", 
+parser.add_argument("--clobber", dest = "clobber", 
  help = "Clobber or overwrite existing results")
 
-#parser.add_option("-l", "--logfile", dest = "logfile", 
+#parser.add_argument("-l", "--logfile", dest = "logfile", 
 # help = "Logfile to log progress and summary")
+# (options, args) = parser.parse_args()
 
-(options, args) = parser.parse_args()
+args = parser.parse_args()
+if args.verbose:
+    print("verbose turned on")
 
+logpath=args.logpath
 
-logpath=options.logpath
-
-
-debug=options.debug
+debug=args.debug
 
 logfile = 'casu_listdriven_batch.logfile'
 
@@ -1120,10 +1045,10 @@ logger(flog, logdata)
 logdata='Version: %s %s %s ' % (sys.argv[0], __version__, __date__)
 logger(flog, logdata)
 
-logdata = 'options: '
+logdata = 'args: '
 logger(flog, logdata)
 
-logdata = options
+logdata = args
 logger(flog, logdata)
 
 logdata = 'args: '
@@ -1132,17 +1057,17 @@ logger(flog, logdata)
 logdata = args
 logger(flog, logdata)
 
-infile = options.infile
+infile = args.infile
 logdata='infile: %s ' % infile
 logger(flog, logdata)
 
-outpath = options.outpath + '/'
+outpath = args.outpath + '/'
 logdata='outpath: %s ' % outpath
 logger(flog, logdata)
 
-if options.stagepath:
-  stagepath = options.stagepath + '/'
-if not options.stagepath: stagepath=outpath
+if args.stagepath:
+  stagepath = args.stagepath + '/'
+if not args.stagepath: stagepath=outpath
 
 logdata='stagepath: %s ' % stagepath
 logger(flog, logdata)
@@ -1157,7 +1082,7 @@ try:
   numLines = len(open(infile).readlines())
 except:
   traceback.print_exc(file=sys.stdout)
-  print('input file cannot be opened; exiting....') 
+  print('input file cannot be opened; exiting.... ', None) 
   sys.exit(1)  
 
 logdata = 'Input file has length: %d' % numLines
@@ -1173,17 +1098,18 @@ logger(flog, logdata)
 
 starttime=time.time()
 
-SelfTest = options.selftest
+SelfTest = args.selftest
 
-listpath=options.listpath 
+listpath=args.listpath 
 ipos=listpath.rfind('/')
 print(ipos, len(listpath))
-if ipos+1 < len: listpath=options.listpath + '/'
+if ipos+1 < len: listpath=args.listpath + '/'
 logdata='listpath: %s' % listpath 
 logger(flog, logdata)
 
 ifile=0
-DryRun = False
+DryRun = args.dryrun
+if DryRun: print('Running in Dry Run mode')
 nfiles=len(records)
 #help(records)
 #key=raw_input("Enter any key to continue: ")
@@ -1196,11 +1122,11 @@ logger(flog, logdata)
 # loop through line by line; there is an off-by-one issue
 step=1
 start=step-1
-if options.nskip_files > 0: start=int(options.nskip_files)
+if args.nskip_files > 0: start=int(args.nskip_files)
 print("start, step: ", start, step, len(records))
 
 end=len(records)
-if options.nfiles > 0: end=start+int(options.nfiles)
+if args.nfiles > 0: end=start+int(args.nfiles)
 print("start, end, step: ", start, end, step)
 
 #records=records[start:end:step]
@@ -1223,7 +1149,7 @@ for line in records:
     logdata= "Processing: ", filename
     logger(flog, logdata)
 
-    process_image(files=files, outpath=outpath, Search=options.search)
+    process_image(files=files, outpath=outpath, Search=args.search)
 
     usage = resource.getrusage(resource.RUSAGE_SELF)
     for name, desc in [
