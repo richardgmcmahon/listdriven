@@ -28,9 +28,15 @@
   Both subprocess.call and subprocess.Popen are used for
   historical reasons due to previous use of os.popen
 
-  google: python subprocess call popen
+  subprocess.Popen is the main class with a number of wrapper
+  convenience fucntions e.g. call, check_call, check_output
+ 
+  see google: python subprocess call popen
 
-  See:
+  See also:
+
+http://www.pythonforbeginners.com/os/subprocess-for-system-administrators
+
 http://stackoverflow.com/questions/7681715/whats-the-difference-between-subprocess-popen-and-call-how-do-you-use-them-to
 
 http://stackoverflow.com/questions/6934696/python-subprocess-call-and-subprocess-popen-giving-me-different-outputs
@@ -106,20 +112,20 @@ http://stackoverflow.com/questions/273192/check-if-a-directory-exists-and-create
         if exception.errno != errno.EEXIST:
             raise
 
-def imcore_list_run(options=None, imagefile=None,
+def imcore_list_run(args=None, imagefile=None,
   confmapfile=None, listfile=None, outfile=None):
 
   # set the imcorelist parameters; maybe need to check these againsts
   # values in the header of the catalogue file
   nustep=-1
-  print('options.vhs: ',options.vhs)
-  print('options.cache: ',options.cache)
+  print('args.vhs: ', args.vhs)
+  print('args.cache: ', args.cache)
 
-  if not options.vhs:
+  if not args.vhs:
     nustep=pyfits.getval(imagefile,'NUSTEP',0)
     print('nustep = ', nustep)
   
-  if options.vhs: 
+  if args.vhs: 
     rcore = "3.0"
     nbsize = "64"
     threshold = "1.5"
@@ -141,7 +147,7 @@ def imcore_list_run(options=None, imagefile=None,
   print('rcore, nbsize, threshold: ', rcore, nbsize, threshold)
 
   # needs the binary location to be a parameter for portability
-  command ='nice -n19 /home/rgm/bin/imcore_list ' \
+  command ='time nice -n19 /home/rgm/bin/imcore_list ' \
         + ' ' + imagefile \
         + ' ' + confmapfile \
         + ' ' + listfile \
@@ -298,7 +304,7 @@ def get_vista_pawprints(imagefile=None, filename=None,
       catfile = files[0][0:-4] + '_cat.fits'
 
       print('SelfTest catalogue file: ' + catfile)
-      command ='scp -i ~/.ssh/id_dsa_nk ' \
+      command ='time scp -i ~/.ssh/id_dsa_nk ' \
         + ' '+ host + catfile \
         + ' ' + stagepath +'/. '
 
@@ -323,7 +329,7 @@ def get_vista_pawprints(imagefile=None, filename=None,
   return list
 
 
-def process_image(files=None, outpath=None, Search=False):
+def process_image(files=None, outpath=None):
 
     catfile = files[0][0:-4] + '_cat.fits'
     logdata='process_image: Number of files = %s' % (str(len(files)))
@@ -422,7 +428,7 @@ def process_image(files=None, outpath=None, Search=False):
     # build the scp command; note spaces between each parameter
     # use -v to debug the scp/ssh 
     #cmd ='scp -v -i ~/.ssh/id_dsa_nk ' \
-    command ='scp  -i ~/.ssh/id_dsa_nk ' \
+    command ='time scp  -i ~/.ssh/id_dsa_nk ' \
       + ' '+ host + filename \
       + ' ' + stagepath +'/. '
 
@@ -473,7 +479,7 @@ def process_image(files=None, outpath=None, Search=False):
         time.sleep(delay)
         continue
 
-      command ='scp -i ~/.ssh/id_dsa_nk ' \
+      command ='time scp -i ~/.ssh/id_dsa_nk ' \
        + ' '+ host + confname \
        + ' ' + stagepath +'/. '
 
@@ -524,19 +530,19 @@ def process_image(files=None, outpath=None, Search=False):
         os.remove(lockfile)       
 
 
-    if options.pawprints:
+    if args.pawprints:
       # read the file to determine the constituent pawprints
       get_vista_pawprints(imagefile=imagefile, filename=filename, 
        stagepath=stagepath)
 
-    if SelfTest or Search:
+    if SelfTest:
       print('SelfTest/Search catalogue file: ' + catfile)
       if os.path.exists(catfile):
         logdata='catalogue already exists %s.' % (catfile)
         logger(flog, logdata)
 
       if not os.path.exists(catfile):
-        command ='scp -i ~/.ssh/id_dsa_nk ' \
+        command ='time scp -i ~/.ssh/id_dsa_nk ' \
          + ' '+ host + catfile \
          + ' ' + stagepath +'/. '
 
@@ -581,14 +587,14 @@ def process_image(files=None, outpath=None, Search=False):
         print(os.path.basename(trace[0]), ' line :', str(trace[1]))
         key=raw_input("Debug: Enter any key to continue: ")
 
-      imcore_list_run(options=options, imagefile=imagefile,
+      imcore_list_run(args=args, imagefile=imagefile,
         confmapfile=confmapfile, listfile=listfile, outfile=outfile)
 
       print('listdriven photometry completed')
       #key=raw_input("Enter any key to continue: ")
 
-    print('options.cache: ',options.cache)
-    if os.path.exists(imagefile) and not options.cache:
+    print('args.cache: ', args.cache)
+    if os.path.exists(imagefile) and not args.cache:
       print('Deleting data files used')
       print('Remove the image file:' + imagefile)
       try:
@@ -600,7 +606,7 @@ def process_image(files=None, outpath=None, Search=False):
         logger(flogerr, logdata)
         pass
 
-    if os.path.exists(confmapfile) and not options.cache:
+    if os.path.exists(confmapfile) and not args.cache:
       print('Remove the confidence map:' + confmapfile)
       try:
         os.remove(confmapfile)       
@@ -610,7 +616,7 @@ def process_image(files=None, outpath=None, Search=False):
         pass
 
     if SelfTest:
-      if os.path.exists(catfile)  and not options.cache:
+      if os.path.exists(catfile)  and not args.cache:
         print('Remove the catalogue fits file:' + catfile)
         try:
           os.remove(catfile)       
@@ -651,7 +657,7 @@ def get_file(host=None, infile=None, transport='scp'):
     scp_verbose=''
 
     # ssh key location could be in cfg
-    command ='scp ' + scp_verbose + ' -i ~/.ssh/id_dsa_nk ' \
+    command ='time scp ' + scp_verbose + ' -i ~/.ssh/id_dsa_nk ' \
       + ' '+ host + catfile \
       + ' ' + stagepath +'/. '
 
@@ -776,14 +782,14 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
         print(os.path.basename(trace[0]), ' line :', str(trace[1]))
         key=raw_input("Debug: Enter any key to continue: ")
 
-      imcore_list_run(options=options, imagefile=imagefile,
+      imcore_list_run(args=args, imagefile=imagefile,
         confmapfile=confmapfile, listfile=listfile, outfile=outfile)
 
       print('listdriven photometry completed')
       #key=raw_input("Enter any key to continue: ")
 
-    print('options.cache: ',options.cache)
-    if os.path.exists(imagefile) and not options.cache:
+    print('args.cache: ',args.cache)
+    if os.path.exists(imagefile) and not args.cache:
       print('Deleting data files used')
       print('Remove the image file:' + imagefile)
       try:
@@ -795,7 +801,7 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
         logger(flogerr, logdata)
         pass
 
-    if os.path.exists(confmapfile) and not options.cache:
+    if os.path.exists(confmapfile) and not args.cache:
       print('Remove the confidence map:' + confmapfile)
       try:
         os.remove(confmapfile)       
@@ -805,7 +811,7 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
         pass
 
     if SelfTest:
-      if os.path.exists(catfile)  and not options.cache:
+      if os.path.exists(catfile)  and not args.cache:
         print('Remove the catalogue fits file:' + catfile)
         try:
           os.remove(catfile)       
@@ -835,9 +841,6 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
 
 
     
-
-
-
 __version__ = "$Revision: 1.1 $"
 __date__ = "$Date: 2010/10/21 14:28:26 $"
 
@@ -854,7 +857,6 @@ import traceback
 from time import strftime, gmtime, sleep
 
 from glob import glob
-from optparse import OptionParser
 
 import MultipartPostHandler
 
@@ -895,7 +897,6 @@ processes = []
 starttime=time.time() 
 computetime=0.0
 
-
 iretry_max=1
 nskip_files=0
 delaytime=1.0
@@ -907,7 +908,6 @@ config = ConfigParser.RawConfigParser()
 config.read('casu_listdriven_batch.cfg')
 host = config.get('casu','host')
 user = config.get('casu','user')
-#host='rgm@apm21.ast.cam.ac.uk:'
 host=user+'@'+host+':'
 
 
@@ -918,14 +918,20 @@ hostname=socket.gethostname()
 
 time_str = strftime("%Y-%m-%dT%H-%M-%S", gmtime())
 
-
-
-# OptionParser is deprecated so need to replace with argparse
-# see section on Upgrading optparse code in argparse
-#parser = OptionParser()
-
 import argparse
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description='Listdriven photometry worker script; still under development')
+"""
+Input file format
+
+# Sun Jun 22 15:00:56 2014
+# /home/rgm/soft/idl/librgm/survey_radec_field.pro 1065
+# /home/rgm/Projects/PS1/20140612/ps1zdrops_vhsarea1.fits
+# /data/vhs/dqc/2014/vistaqc_20140430_tiles_vhs.fits
+# J
+       1      13      13  /data/apm29_a/vista/processed/20091103/v20091103_00093_st_tl.fit
+       2      14      27  /data/apm29_a/vista/processed/20091103/v20091103_00129_st_tl.fit
+       3       6      33  /data/apm29_a/vista/processed/20091103/v20091103_00165_st_tl.fit
+"""
 
 parser.add_argument("-i", "--input", dest = "infile", 
  help = "Input filename")
@@ -940,22 +946,22 @@ parser.add_argument("-o", "--outpath", dest = "outpath",
 
 parser.add_argument("--cache", action = "store_true", dest = "cache", 
  default = False, 
- help = "cache casu files")
+ help = "cache processed image files in stagepath or outpath")
 
 parser.add_argument("--stagepath", dest = "stagepath", 
  help = "Data staging area  path [Default outpath]")
 
 parser.add_argument("--logpath", dest = "logpath", 
  default = './',
- help = "Output path")
+ help = "logpath")
 
 parser.add_argument("--skip", dest = "nskip_files", 
  default = '0',
- help = "Number of files to skip")
+ help = "Number of list files to skip")
 
 parser.add_argument("--nfiles", dest = "nfiles", 
- default = '1',
- help = "Number of files to process")
+ default='0',
+ help = "Number of list files to process")
 
 parser.add_argument("--debug", action = "store_true", dest = "debug", 
  default = False, 
@@ -969,7 +975,6 @@ parser.add_argument("--dryrun", dest = "dryrun",
  default = False, 
  help = "run Dry Run mode that test the input file handling")
 
-
 parser.add_argument("--pawprints", action = "store_true", dest = "pawprints", 
  default = False, 
  help = "process constituent pawprints")
@@ -978,7 +983,7 @@ parser.add_argument("--getcat", dest = "getcat",
  default = False, 
  help = "copy catalogue from archive location")
 
-parser.add_argument("--search", action = "store_true", dest = "search", 
+parser.add_argument("--search", dest = "search", 
  default = False, 
  help = "Search catalogue")
 
@@ -986,7 +991,7 @@ parser.add_argument("--radius", dest = "search_radius",
  default = '4',
  help = "Catalogue search radius (arc seconds)")
 
-parser.add_argument("--vhs", action = "store_true", dest = "vhs", 
+parser.add_argument("--vhs", dest = "vhs", 
  default = False, 
  help = "run using vhs parameters")
 
@@ -1149,7 +1154,7 @@ for line in records:
     logdata= "Processing: ", filename
     logger(flog, logdata)
 
-    process_image(files=files, outpath=outpath, Search=args.search)
+    process_image(files=files, outpath=outpath)
 
     usage = resource.getrusage(resource.RUSAGE_SELF)
     for name, desc in [
