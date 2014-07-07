@@ -165,17 +165,26 @@ def imcore_list_run(args=None, imagefile=None,
   logdata=command
   logger(flog, logdata)
 
-  args = shlex.split(command)
+  command = shlex.split(command)
   print('Print command as args: ')
-  print(args)
-  result = subprocess.call(args, \
+  print(command)
+  result = subprocess.call(command, \
        stderr=stderrlog, stdout=stdoutlog)
-  logdata='subprocess error status: ' + str(result)
-  logger(flog, logdata)
+  #result = subprocess.Popen(command, 
+  #     stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+  #print('Using subprocess.Popen and communicate')
+  #output, errors = result.communicate()
+  #result=subprocess.check_output(command)
+  #help(result)
+  #print('subprocesss output: ', output)
+  #print('subprocess errors: ', errors)
+
+  #logdata='subprocess error status: ' + str(result)
+  #logger(flog, logdata)
   trace = traceback.extract_stack()[-1]
   print(os.path.basename(trace[0]), ' line :', str(trace[1]))
-  if result is not 0: print(len(result))
-  print(result)
+  #if result is not 0: print(len(result))
+  #print(result)
 
   if result is not 0:
     print(result)
@@ -290,7 +299,7 @@ def get_vista_pawprints(imagefile=None, filename=None,
     # create confidence map filename from the image filename
     confname = filename[:-4]+'_conf.fit'
 
-    command ='scp  -i ~/.ssh/id_dsa_nk ' \
+    command ='scp -i ~/.ssh/id_dsa_nk ' \
       + ' '+ host + confname \
       + ' ' + stagepath +'/. '
 
@@ -446,6 +455,7 @@ def process_image(files=None, outpath=None):
       #help(result)
       result=subprocess.Popen(command, 
        stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
+      print('Using subprocess.Popen and communicate')
       output, errors = result.communicate()
       #result=subprocess.check_output(command)
       #help(result)
@@ -498,6 +508,7 @@ def process_image(files=None, outpath=None):
       result=subprocess.Popen(command, 
        stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
       output, errors = result.communicate()
+      print('Using subprocess.Popen and communicate')
       #help(result)
       print('subprocesss output: ', output)
       print('subprocess errors: ', errors)
