@@ -6,7 +6,10 @@ def parse_config(config_file='wise2des.cfg', silent=False, debug=False):
 
     read a config file
 
+    might want to pass back the location of the config file
+
     """
+    import os
     import ConfigParser
     config = ConfigParser.RawConfigParser()
     # read database connection info from config file
@@ -14,7 +17,7 @@ def parse_config(config_file='wise2des.cfg', silent=False, debug=False):
     # using try
 
     if not silent:
-        print('Reading config file', config_file)
+        print('Reading config file', os.getcwd() + '/' + config_file)
 
     try:
         config.read(config_file)
@@ -22,6 +25,18 @@ def parse_config(config_file='wise2des.cfg', silent=False, debug=False):
     except Exception as e:
         print('Problem reading config file: ', config_file)
         print(e)
+        print()
+        print('config file', configfile, "does not exist")
+        print('Now trying another location')
+        config_file = os.path.join(os.environ["HOME"], '.config/', config_file)
+        print('Trying ', configfile)
+        cfg.read(config_file)
+    except Exception as e:
+        print('Problem reading config file: ', config_file)
+        print('Now trying another location')
+        config_file = os.path.join(os.environ["HOME"], '.config/', config_file)
+        print('Trying ', configfile)
+        cfg.read(config_file)
 
     # return db, host, user, password, table
     if debug:
