@@ -19,6 +19,9 @@
 
   FIX/trap some of the crash conditions; maybe email alert option
 
+  Also, need to log errors to a file and print at the end
+  an error repot summary
+
   verbose levels; turn off/reduce the ssh debug levels
 
   could add time to subprocess call to get some profiling info
@@ -112,8 +115,78 @@ http://stackoverflow.com/questions/273192/check-if-a-directory-exists-and-create
         if exception.errno != errno.EEXIST:
             raise
 
+
+def get_remotefile(filename=None):
+    # scp the science image
+    # build the scp command; note spaces between each parameter
+    # use -v to debug the scp/ssh 
+    #cmd ='scp -v -i ~/.ssh/id_dsa_nk ' \
+    command ='time scp  -i ~/.ssh/id_dsa_nk ' \
+      + ' ' + host + filename \
+      + ' ' + stagepath +'/. '
+
+    logdata=command
+    logger(flog, logdata)
+
+    itry=0
+    Transfered=False
+
+    trace = traceback.extract_stack()[-1]
+    print(os.path.basename(trace[0]), ' line :', str(trace[1]))
+
+    while (itry < iretry_max) and not Transfered:
+      itry=itry+1
+      if debug or verbose:
+        print(command)
+      #result=os.popen(command)
+      #help(result)
+      result=subprocess.Popen(command, 
+       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
+      print('Using subprocess.Popen and communicate')
+      output, errors = result.communicate()
+      #result=subprocess.check_output(command)
+      #help(result)
+      print('subprocesss output: ', output)
+      print('subprocess errors: ', errors)
+      #while True:
+      #  line = errors.readline()
+      #  if line == "": break
+      #  logdata = line
+      #  logger(flog, logdata)
+      #  print(line,)
+      #  if debug: key=raw_input("Enter any key to continue: ")
+
+      # check the files was transfered
+      ipos=filename.rfind('/')
+      imagefile = stagepath + filename[ipos+1:] 
+
+      if os.access(imagefile, os.F_OK):
+        Transfered=True
+
+      if not os.access(imagefile, os.F_OK):
+        scpfailurefile=outfile + '.scpfailure' 
+        scpfailurefileh = open(scpfailurefile, 'wt')
+
+        logdata='WARNING: image file NOT transfered: %s' % imagefile
+        logger(flogerr, logdata)
+        Transfered=False
+        delay=delaytime*(itry*itry)
+        logdata='WAITING: %s seconds' % delay
+        logger(flog, logdata)
+        time.sleep(delay)
+        continue
+
+
+
 def imcore_list_run(args=None, imagefile=None,
   confmapfile=None, listfile=None, outfile=None):
+  """
+  runs imcore_list using subprocess
+
+  
+
+
+  """   
 
   # set the imcorelist parameters; maybe need to check these againsts
   # values in the header of the catalogue file
@@ -147,7 +220,8 @@ def imcore_list_run(args=None, imagefile=None,
   print('rcore, nbsize, threshold: ', rcore, nbsize, threshold)
 
   # needs the binary location to be a parameter for portability
-  command ='time nice -n19 /home/rgm/bin/imcore_list ' \
+  #command = 'time nice -n19 ' + IMCORE_LIST  \
+  command = 'time nice -n19 /home/rgm/bin/imcore_list ' \
         + ' ' + imagefile \
         + ' ' + confmapfile \
         + ' ' + listfile \
@@ -159,25 +233,31 @@ def imcore_list_run(args=None, imagefile=None,
 
       # + ' --verbose '
 
+  # save stdout and stderr to a logfile
   stdoutlog = open(logpath+'Logfile_stdout', 'w+')
   stderrlog = open(logpath+'Logfile_stderr', 'w+')
 
   logdata=command
   logger(flog, logdata)
 
+  # convert comamd to string list for subprocess
   command = shlex.split(command)
   print('Print command as args: ')
   print(command)
+
   result = subprocess.call(command, \
        stderr=stderrlog, stdout=stdoutlog)
-  #result = subprocess.Popen(command, 
-  #     stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-  #print('Using subprocess.Popen and communicate')
-  #output, errors = result.communicate()
-  #result=subprocess.check_output(command)
-  #help(result)
-  #print('subprocesss output: ', output)
-  #print('subprocess errors: ', errors)
+  
+  Popen=False
+  if Popen:
+    result = subprocess.Popen(command, shell=True, 
+      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print('Using subprocess.Popen and communicate')
+    output, errors = result.communicate()
+    result=subprocess.check_output(command)
+    #help(result)
+    print('subprocesss output: ', output)
+    print('subprocess errors: ', errors)
 
   #logdata='subprocess error status: ' + str(result)
   #logger(flog, logdata)
@@ -186,6 +266,7 @@ def imcore_list_run(args=None, imagefile=None,
   #if result is not 0: print(len(result))
   #print(result)
 
+  result=0
   if result is not 0:
     print(result)
     trace = traceback.extract_stack()[-1]
@@ -293,6 +374,9 @@ def get_vista_pawprints(imagefile=None, filename=None,
     logdata=command
     logger(flog, logdata)
 
+    trace = traceback.extract_stack()[-1]
+    print(os.path.basename(trace[0]), ' line :', str(trace[1]))
+
     #result=os.popen(command)
     result=subprocess.Popen(command)  
 
@@ -305,6 +389,9 @@ def get_vista_pawprints(imagefile=None, filename=None,
 
     logdata=command
     logger(flog, logdata)
+
+    trace = traceback.extract_stack()[-1]
+    print(os.path.basename(trace[0]), ' line :', str(trace[1]))
 
     #result=os.popen(command)
     result=subprocess.Popen(command)  
@@ -338,62 +425,66 @@ def get_vista_pawprints(imagefile=None, filename=None,
   return list
 
 
-def process_image(files=None, outpath=None):
+def process_image(filename=None, files=None, outpath=None):
+    """
+    refactoring in progress
 
-    catfile = files[0][0:-4] + '_cat.fits'
-    logdata='process_image: Number of files = %s' % (str(len(files)))
-    logger(flog, logdata)
+    """
 
-    # find first file; needs to be refactored since only one file is input
-    if SelfTest:
-      ipos1=catfile.rfind('/')
-      ipos2=catfile.rfind('.fits')
-      outfile=outpath+catfile[ipos1+1:ipos2] + '_listdriven.fits'
-      if os.path.exists(outfile):
-        logdata='List-driven data already exists for %s.' % (outfile)
-        logger(flog, logdata)
-        return
+    deltatime=time.time()
 
     logdata= 'Image filename: ' + filename
     logger(flog, logdata)
-    deltatime=time.time()
 
-    confname = files[0][:-4]+'_conf.fit'
+    catfile = filename[0:-4] + '_cat.fits'
+    logdata='Catalogue file: %s' % catfile
+    logger(flog, logdata)
+
+    confname = filename[:-4]+'_conf.fit'
     if verbose: 
       logdata='Confidence map: %s' % confname
       logger(flog, logdata)
 
-    # strip of the path from the filename
-    ipos=files[0].rfind('/')
-    listfile = files[0][ipos+1:] + '.radec'
-    if verbose: logdata='List file: %s' % listfile
-    if verbose: logger(flog, logdata)
+
+    # this is duplicated below!
+    # find first file; needs to be refactored since only one file is input
+    #if SelfTest:
+    #  ipos1=catfile.rfind('/')
+    #  ipos2=catfile.rfind('.fits')
+    #  outfile=outpath+catfile[ipos1+1:ipos2] + '_listdriven.fits'
+    #  if os.path.exists(outfile):
+    #    logdata='List-driven data already exists for %s.' % (outfile)
+    #    logger(flog, logdata)
+    #    return
+
 
     if not SelfTest:
-      ipos=files[0].rfind('/')
-      listfile = files[0][ipos+1:] + '.radec'
-      outfile=outpath + listfile + '_listdriven.fits'
-      logdata='Output file: %s' % outfile
+      # strip of the path from the filename
+      ipos=filename.rfind('/')
+      listfile = filename[ipos+1:] + '.radec'
+
+      outfile = outpath + listfile + '_listdriven.fits'
+      logdata ='Output file: %s' % outfile
       logger(flog, logdata)
+
       listfile = listpath + listfile
-      if os.path.exists(outfile):
-        print('Skipping since outfile already exists for %s.' % (outfile))
-        return
-        
+      logdata='Listfile: %s' % listfile
+
 
     if SelfTest:
       logdata= 'Running self test regression using imcore catalogue'   
       logger(flog, logdata)
-      catfile = files[0][0:-4] + '_cat.fits'
+      catfile = filename[0:-4] + '_cat.fits'
       logdata='catalogue file: %s' % catfile
       logger(flog, logdata)
       ipos1=catfile.rfind('/')
       ipos2=catfile.rfind('.fits')
       outfile=outpath+catfile[ipos1+1:ipos2] + '_listdriven.fits'
-      print('outfile: ', outfile)
-      if os.path.exists(outfile):
-        print('List-driven data already exists for %s.' % (outfile))
-        return
+
+    print('outfile: ', outfile)
+    if os.path.exists(outfile):
+      print('List-driven data already exists for %s.' % (outfile))
+      return
 
     lockfile=outfile + '.lock' 
     print('lockfile: ', lockfile)
@@ -414,6 +505,7 @@ def process_image(files=None, outpath=None):
     lkfile.write(':pid: '+ str(pid) + '\n')
     lkfile.flush()
 
+    #another method  
     #lockfile=listfile + '.lock.' + str(pid)
     #logdata = "Lockfile: " + lockfile
     #logger(flog, logdata)
@@ -434,98 +526,9 @@ def process_image(files=None, outpath=None):
       logger(flog, logdata)
       key=raw_input("Enter any key to continue: ")
 
-    # build the scp command; note spaces between each parameter
-    # use -v to debug the scp/ssh 
-    #cmd ='scp -v -i ~/.ssh/id_dsa_nk ' \
-    command ='time scp  -i ~/.ssh/id_dsa_nk ' \
-      + ' '+ host + filename \
-      + ' ' + stagepath +'/. '
+    get_remotefile(filename=filename)
 
-    logdata=command
-    logger(flog, logdata)
-
-    itry=0
-    Transfered=False
-
-    while (itry < iretry_max) and not Transfered:
-      itry=itry+1
-      if debug: 
-        print(command)
-      #result=os.popen(command)
-      #help(result)
-      result=subprocess.Popen(command, 
-       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
-      print('Using subprocess.Popen and communicate')
-      output, errors = result.communicate()
-      #result=subprocess.check_output(command)
-      #help(result)
-      print('subprocesss output: ', output)
-      print('subprocess errors: ', errors)
-      #while True:
-      #  line = errors.readline()
-      #  if line == "": break
-      #  logdata = line
-      #  logger(flog, logdata)
-      #  print(line,)
-      #  if debug: key=raw_input("Enter any key to continue: ")
-
-      # check the files was transfered
-      ipos=filename.rfind('/')
-      imagefile = stagepath + filename[ipos+1:] 
-
-      if os.access(imagefile, os.F_OK):
-        Transfered=True
-
-      if not os.access(imagefile, os.F_OK):
-        scpfailurefile=outfile + '.scpfailure' 
-        scpfailurefileh = open(scpfailurefile, 'wt')
-
-        logdata='WARNING: image file NOT transfered: %s' % imagefile
-        logger(flogerr, logdata)
-        Transfered=False
-        delay=delaytime*(itry*itry)
-        logdata='WAITING: %s seconds' % delay
-        logger(flog, logdata)
-        time.sleep(delay)
-        continue
-
-      command ='time scp -i ~/.ssh/id_dsa_nk ' \
-       + ' '+ host + confname \
-       + ' ' + stagepath +'/. '
-
-      logdata=command
-      logger(flog, logdata)
-
-      if debug: print(command)
-      usage = resource.getrusage(resource.RUSAGE_SELF)
-      for name, desc in [
-        ('ru_utime', 'User time'),
-        ('ru_stime', 'System time'),
-        ]:
-        print('%-25s (%-10s) = %s' % (desc, name, getattr(usage, name)))
-
-      #result=os.popen(command)
-      result=subprocess.Popen(command, 
-       stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=True)
-      output, errors = result.communicate()
-      print('Using subprocess.Popen and communicate')
-      #help(result)
-      print('subprocesss output: ', output)
-      print('subprocess errors: ', errors)
-      usage = resource.getrusage(resource.RUSAGE_SELF)  
-      for name, desc in [
-        ('ru_utime', 'User time'),
-        ('ru_stime', 'System time'),
-        ]:
-        print('%-25s (%-10s) = %s' % (desc, name, getattr(usage, name)))
-
-      #while True:
-      #  line = result.readline()
-      #  if line == "": break
-      #  logdata = line
-      #  logger(flog, logdata)
-      #  print(line,)
-      #  if debug: key=raw_input("Enter any key to continue: ")
+    get_remotefile(filename=confname)
 
     # check the files was transfered
     ipos=confname.rfind('/')
@@ -539,7 +542,6 @@ def process_image(files=None, outpath=None):
         logdata = "Delete lockfile %s " % lockfile
         logger(flog, logdata)
         os.remove(lockfile)       
-
 
     if args.pawprints:
       # read the file to determine the constituent pawprints
@@ -595,7 +597,7 @@ def process_image(files=None, outpath=None):
 
       if debug: 
         trace = traceback.extract_stack()[-1]
-        print(os.path.basename(trace[0]), ' line :', str(trace[1]))
+        print(os.path.basename(trace[0]), ' line:', str(trace[1]))
         key=raw_input("Debug: Enter any key to continue: ")
 
       imcore_list_run(args=args, imagefile=imagefile,
@@ -669,7 +671,7 @@ def get_file(host=None, infile=None, transport='scp'):
 
     # ssh key location could be in cfg
     command ='time scp ' + scp_verbose + ' -i ~/.ssh/id_dsa_nk ' \
-      + ' '+ host + catfile \
+      + ' '+ host + infile \
       + ' ' + stagepath +'/. '
 
     logdata=command
@@ -677,6 +679,9 @@ def get_file(host=None, infile=None, transport='scp'):
 
     itry=0
     Transfered=False
+
+    trace = traceback.extract_stack()[-1]
+    print(os.path.basename(trace[0]), ' line :', str(trace[1]))
 
     while (itry < iretry_max) and not Transfered:
       itry=itry+1
@@ -719,23 +724,27 @@ def get_file(host=None, infile=None, transport='scp'):
         time.sleep(delay)
         continue
 
-def process_catalogue(file=None, outpath=None, radius=2.0):
+def search_catalogue(filename=None, listfile=None, outpath=None, radius=2.0):
+    """
 
-    catfile = file[0][0:-4] + '_cat.fits'
+    """
+
+    print('listfile: ', listfile)
+    table=Table.read(listfile, format='ascii')
+    table.pprint()
+    ralist=table['col1']
+    declist=table['col2']
+
+    catfile = filename[0:-4] + '_cat.fits'
     logdata='Process catalogue file: %s' % (catfile)
     logger(flog, logdata)
 
     deltatime=time.time()
 
-    # strip of the path from the filename
-    ipos=files[0].rfind('/')
-    listfile = file[0][ipos+1:] + '.radec'
-    logdata='Process search list file: %s' % (listfile)
-
-    outfile=outpath + listfile + '_search.fits'
+    ipos=filename.rfind('/')
+    outfile=outpath + filename[ipos+1:-4] + '_search.fits'
     logdata='Output file: %s' % outfile
     logger(flog, logdata)
-    listfile = listpath + listfile
     if os.path.exists(outfile):
       print('Skipping since outfile already exists for %s.' % (outfile))
       return
@@ -785,7 +794,7 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
     logger(flog, logdata)
 
     if not DryRun:
-      logdata= 'Start processing the image data'
+      logdata= 'Start processing the data'
       logger(flog, logdata)
 
       if debug: 
@@ -793,10 +802,12 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
         print(os.path.basename(trace[0]), ' line :', str(trace[1]))
         key=raw_input("Debug: Enter any key to continue: ")
 
-      imcore_list_run(args=args, imagefile=imagefile,
-        confmapfile=confmapfile, listfile=listfile, outfile=outfile)
+      ipos=filename.rfind('/')
+      catfile = stagepath + catfile[ipos+1:]
+      result=srlib.cat_cal(catfile, ralist, declist, 1, radius = radius)
+      result.write(outfile)
 
-      print('listdriven photometry completed')
+      print('catalogue search completed')
       #key=raw_input("Enter any key to continue: ")
 
     print('args.cache: ',args.cache)
@@ -811,25 +822,6 @@ def process_catalogue(file=None, outpath=None, radius=2.0):
         logdata = "error removing imagefile %s " % imagefile        
         logger(flogerr, logdata)
         pass
-
-    if os.path.exists(confmapfile) and not args.cache:
-      print('Remove the confidence map:' + confmapfile)
-      try:
-        os.remove(confmapfile)       
-      except:
-        logdata = "error removing confmapfile %s " % confmapfile        
-        logger(flogerr, logdata)
-        pass
-
-    if SelfTest:
-      if os.path.exists(catfile)  and not args.cache:
-        print('Remove the catalogue fits file:' + catfile)
-        try:
-          os.remove(catfile)       
-        except:
-          logdata = "error removing cataloge file%s " % catfile        
-          logger(flogerr, logdata)
-          pass
 
     if os.path.exists(lockfile):
       logdata = "Delete lockfile %s " % lockfile
@@ -869,6 +861,8 @@ from time import strftime, gmtime, sleep
 
 from glob import glob
 
+from astropy.table import Table
+
 import MultipartPostHandler
 
 import pyfits
@@ -884,7 +878,7 @@ import multiprocessing
 # 
 #sys.path.append('/home/sr525/Python_Code/')
 sys.path.append('/home/rgm/soft/sreed/')
-#import cat_cal as srlib 
+import cat_cal as srlib 
 
 from table_stats import *
 from pause import *
@@ -915,12 +909,13 @@ delaytime=1.0
 import ConfigParser
 config = ConfigParser.RawConfigParser()
 
-# read config file
+# read config file; need to decide capatilisation rules
+# for variable names 
 config.read('casu_listdriven_batch.cfg')
 host = config.get('casu','host')
 user = config.get('casu','user')
+IMCORE_LIST = config.get('casu','imcore_list')
 host=user+'@'+host+':'
-
 
 from time import strftime, gmtime, sleep
 
@@ -1165,7 +1160,15 @@ for line in records:
     logdata= "Processing: ", filename
     logger(flog, logdata)
 
-    process_image(files=files, outpath=outpath)
+    process_image(filename=filename, files=files, outpath=outpath)
+
+    if args.search: 
+      # strip of the path from the filename
+      ipos=filename.rfind('/')
+      listfile = listpath + filename[ipos+1:] + '.radec'
+      logdata='Process search with list file: %s' % (listfile)
+      search_catalogue(filename=filename, listfile=listfile, 
+        outpath=outpath, radius=4.0)
 
     usage = resource.getrusage(resource.RUSAGE_SELF)
     for name, desc in [

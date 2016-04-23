@@ -50,6 +50,7 @@ HISTORY
 20160411: rgm- parallelising
 20160411: rgm- made into function
 20160411: rgm- making pep8 and future compliant
+20160323: slr- original version
 
 """
 from __future__ import absolute_import, division, print_function
@@ -765,7 +766,7 @@ def mp_forcephot(tilelist=None,
                  overwrite=False,
                  dryrun=False,
                  nworkers=None,
-                 loglevel=logging.DEBUG):
+                 loglevel=logging.INFO):
     """
 
     """
@@ -853,11 +854,6 @@ def parse_args(version=None):
     #    help='the configuration file'
     # )
 
-    parser.add_argument(
-        '-v', '--verbosity', type=int, action='store', default=0,
-        choices=(0, 1, 2, 3),
-        help='integer verbosity level: min=0, max=3 [default=0]')
-
 
     parser.add_argument(
         '--nworkers', type=int, action='store', default=0,
@@ -896,6 +892,18 @@ def parse_args(version=None):
 
     parser.add_argument("--debug", action='store_true', default=False,
                         dest='debug', help="debug option; logging level DEBUG")
+
+
+    # WARNING could be a proxy for level 1 verbosity
+    parser.add_argument("--quiet", action='store_true', default=False,
+                        dest='quiet', help="NOT IMPLEMENTED quiet option; logging level WARNING")
+
+
+    parser.add_argument(
+        '-v', '--verbosity', type=int, action='store', default=0,
+        choices=(0, 1, 2, 3),
+        help='NOT IMPLEMENTED: integer verbosity level: min=0, max=3 [default=0]')
+
 
     args = parser.parse_args()
 
