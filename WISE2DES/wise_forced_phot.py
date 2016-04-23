@@ -2,19 +2,21 @@
 
 multiprocessing version based on
 
-(i) multisite website crawler example
+(i) multisite website crawler example:
+http://toastdriven.com/blog/2008/nov/11/brief-introduction-multiprocessing/
+
 (ii) listdriven_bulk.py written for SDSS BOSS
 
 WARNINGs:
 
-Be careful where you write the log file to
+Be careful where you write the log file to:
 
 Check for stagnant lockfile and also maybe completed files
 
 Problems:
 
 Could have a Deadlock
-It was not caused by logging; it occurs with files are being skipped
+It was not caused by logging; it occurs with files are being skipped; not sure
 
 
 TODO:
