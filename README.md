@@ -14,3 +14,5 @@ but support for other photometry packages such as Sextractor is
 planned.  
 
 I cannot remember the relationship between listdiven_bulk.py and casu_listdriven_batch.py!
+
+Testing Slack integration
