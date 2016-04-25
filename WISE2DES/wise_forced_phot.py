@@ -71,7 +71,6 @@ import warnings
 import subprocess
 
 # 3rd party libs
-import httplib2
 import numpy as np
 import astropy.io.fits as fits
 from astropy import wcs
