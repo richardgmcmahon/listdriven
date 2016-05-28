@@ -605,12 +605,112 @@ def join_cats(tile, outdir):
         for col in t.columns:
             t.rename_column(col, col + "_" + band.upper())
 
+        # stack onto end of the table
         t_out = hstack([t_out, t])
 
     outfile = outdir + tile + "_WISEfp.fits"
     t_out.write(outfile, overwrite=True)
 
     logger.info('Join complete: %s', outfile)
+
+
+def add_DEScat(tile, outdir):
+
+
+    from astropy.table import Table, hstack
+    import numpy as np
+    import match_lists
+
+    config = ConfigParser.RawConfigParser()
+    config.read(config_file)
+
+    release = config.get("des", "release")
+
+    t_cat = Table.read("/data/desardata/" + release + "/" + tile + "/" + tile + ".fits")
+    t_fp = Table.read(outdir + tile + "_WISEfp.fits")
+
+    dists, inds = match_lists.match_lists(t_cat["ALPHAWIN_J2000_G"].data, t_cat["DELTAWIN_J2000_G"].data, t_fp["RA_CALC_G"].data, t_fp["DEC_CALC_G"].data, 5.0/3600.0, 1)
+
+    ids = np.where( (inds <> len(t_fp)) )[0]
+    t_cat = t_cat[ids]
+    t_fp = t_fp[inds[ids]]
+    t_out = hstack([t_fp, t_cat])
+    t_out.write(outdir + tile + "_WISEfp_DEScat.fits", overwrite = True)
+
+
+
+def phot_check(tile, outdir):
+
+    import matplotlib.pyplot as plt
+    from astropy.table import Table, hstack
+    import numpy as np
+
+    t = Table.read(outdir + tile + "_WISEfp_DEScat.fits")
+
+    for band in ["G", "R", "I", "Z", "Y"]:
+        print('band: ', band)
+        ids = np.where( (t["MAG_APER_4_" + band] < 90.0) & (t["MAG_3_CAL_" + band] > 0.0) )[0]
+        plt.plot(t["MAG_APER_4_" + band][ids], t["MAG_3_CAL_" + band][ids]-t["MAG_APER_4_" + band][ids], "k.")
+        plt.ylabel("Calculated Magnitude - Catalogue Aperture 4 Magnitude")
+        plt.xlabel("Catalogue Aperture 4 Magnitude")
+        plt.title(tile + " " + band)
+        plt.axhline(0.0)
+        plt.show()
+
+
+        ids = np.where( (t["MAG_PSF_" + band] < 90.0) & (t["MAG_3_CAL_" + band] > 0.0) )[0]
+        plt.plot(t["MAG_PSF_" + band][ids], t["MAG_3_CAL_" + band][ids]-t["MAG_PSF_" + band][ids], "k.")
+        plt.ylabel("Calculated Magnitude - Catalogue PSF Magnitude")
+        plt.xlabel("Catalogue PSF Magnitude")
+        plt.title(tile + " " + band)
+        plt.axhline(0.0)
+        plt.show()
+
+def WISE_match(tile, outdir, width_arcsecs = 5.0):
+
+    import numpy as np
+    from astropy.table import Table, hstack
+    import srpylib
+
+    infile = outdir + tile + "_WISEfp_DEScat.fits"
+    print('Reading: ', infile)
+    t = Table.read(outdir + tile + "_WISEfp_DEScat.fits")
+
+    t = srpylib.WISE_match(t, "RA_CALC_G", "DEC_CALC_G", width = width_arcsecs/3600.0, c_graph = False, DES_box = True)
+    t.write(outdir + tile + "_WISEfp_DEScat_WISE_match.fits")
+
+
+
+def nearest_neighbour(tile, outdir):
+
+    from astropy.table import Table, hstack
+    import srpylib
+    import match_lists
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    t = Table.read(outdir + tile + "_WISEfp_DEScat.fits")
+
+    ra_min, ra_max, dec_min, dec_max = srpylib.min_max_match(t["RA_CALC_G"], t["DEC_CALC_G"], 1.0, DES_box = True)
+
+    query_wise = "select ra, dec FROM allwise.main WHERE ra > " + ra_min + " and ra < " + ra_max + " and dec > " + dec_min + " and dec < " + dec_max
+    RA, DEC = sqlutil.get(query_wise, db=db, host=host, user=user, password=password)
+
+    dists, inds = match_lists.match_lists(t["RA_CALC_G"].data, t["DEC_CALC_G"].data, RA, DEC, 1.0, 2)
+
+    match_distance = dists[:,1]*3600.0
+
+    plt.axvline(6.1)
+    plt.axvline(6.4)
+    plt.axvline(6.5)
+    plt.axvline(12.0)
+    plt.hist(match_distance, bins = 100)
+    plt.xlabel('Match Distance, "')
+    plt.ylabel("Number")
+    plt.title("Nearest Neighbours, " + tile)
+    plt.show()
+
+    print("Median Distance:", np.median(match_distance))
 
 
 def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
@@ -626,6 +726,9 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
     # get the default logger
     logger = logging.getLogger()
     logger.info('Starting Tile: %s', tilename)
+
+    logger.debug('overwrite: %s', overwrite)
+    logger.debug('dryrun: %s', dryrun)
 
     logger.debug('Reading config file: %s', config_file)
     config = ConfigParser.RawConfigParser()
@@ -677,7 +780,20 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
         logger.info('Calibrate Tile: %s', tilename)
         calibrate(tilename, outpath)
 
+        logger.info('Join Tile catalogues: %s', tilename)
         join_cats(tilename, outpath)
+
+        logger.info('Pairwise match to DES catalogues: %s', tilename)
+        add_DEScat(tilename, outpath)
+
+        logger.info('Calibration check plots: %s', tilename)
+        phot_check(tilename, outpath)
+
+        logger.info('Pairwise match to WISE: %s', tilename)
+        WISE_match(tilename, outpath)
+
+        logger.info('WISE pairwise self-neighbour plot: %s', tilename)
+        nearest_neighbour(tilename, outpath)
 
         logger.info('Completed Tile:%s', tilename)
 
@@ -729,6 +845,8 @@ def worker_tile(work_queue, done_queue):
 
             # logger.info(str(iprocess)+': Processing: %s', item)
 
+            # I am not sure where tilename, overwrite and config_file come from
+            # maybe use inspect to get the values
             status_code = wise_forced_phot(tilename=item,
                                            overwrite=overwrite,
                                            config_file=config_file)
@@ -770,6 +888,8 @@ def mp_forcephot(tilelist=None,
                  loglevel=logging.INFO):
     """
 
+    calls worker function: worker_tile
+
     """
 
     logger = logging.getLogger()
@@ -804,6 +924,7 @@ def mp_forcephot(tilelist=None,
     for w in xrange(nworkers):
         multiprocessing.log_to_stderr(loglevel)
 
+        # create progress to run work_tile
         p = Process(target=worker_tile, args=(work_queue, done_queue))
 
         logger.info('Worker: %s', w + 1)
@@ -905,6 +1026,9 @@ def parse_args(version=None):
         choices=(0, 1, 2, 3),
         help='NOT IMPLEMENTED: integer verbosity level: min=0, max=3 [default=0]')
 
+    parser.add_argument(
+        "--force", action='store_true', default=False,
+        help="force processing ignoring lockfile or existing data")
 
     args = parser.parse_args()
 
