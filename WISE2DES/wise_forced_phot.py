@@ -65,7 +65,7 @@ import time
 
 import logging
 import traceback
-import ConfigParser
+import configparser
 import warnings
 
 import subprocess
@@ -218,7 +218,7 @@ def get_cats_status(tilename=None,
     logger.info('Processing Tile: %s', tilename)
 
     logger.debug('Reading config file: %s', config_file)
-    config = ConfigParser.RawConfigParser()
+    config = configparser.RawConfigParser()
     config.read(config_file)
 
     # could check these exist here and stop if missing
@@ -403,7 +403,7 @@ def mk_cats(tile, rcore, outdir, config_file):
 
     logger.debug('Reading config file: %s', config_file)
 
-    config = ConfigParser.RawConfigParser()
+    config = configparser.RawConfigParser()
     config.read(config_file)
 
     IMCORE_LIST = config.get("casu", "imcore_list")
@@ -621,7 +621,7 @@ def add_DEScat(tile, outdir):
     import numpy as np
     import match_lists
 
-    config = ConfigParser.RawConfigParser()
+    config = configparser.RawConfigParser()
     config.read(config_file)
 
     release = config.get("des", "release")
@@ -731,7 +731,7 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
     logger.debug('dryrun: %s', dryrun)
 
     logger.debug('Reading config file: %s', config_file)
-    config = ConfigParser.RawConfigParser()
+    config = configparser.RawConfigParser()
     config.read(config_file)
 
     DATAPATH = config.get("des", "datapath")
