@@ -414,6 +414,8 @@ def mk_cats(tile, rcore, outdir, config_file):
     outdir = OUTPATH
     outpath = outdir + '/' + tile + '/'
 
+    rcore = config.get("des", "rcore")
+
     logger.debug('Checking outpath: %s', outpath)
 
     if not os.path.exists(outpath):
@@ -530,7 +532,7 @@ def calibrate(tile, outdir):
                 del t[col]
 
         # Add coords
-        im_file = "/data/desardata/Y1A1/" + \
+        im_file = "/data/desardata/" + release + "/" + \
             tile + "/" + tile + "_" + band + ".fits.fz"
         logger.info('Reading: %s', im_file)
         with fits.open(im_file) as fhlist:
@@ -544,10 +546,14 @@ def calibrate(tile, outdir):
 
         with fits.open(fp_file) as fhlist:
             fp_hdr = fhlist[1].header
+
         rcore = fp_hdr["RCORE"]
         skyn = fp_hdr["SKYNOISE"]
         zpt = fp_hdr["SEXMGZPT"]
         expt = fp_hdr["EXPTIME"]
+        apcor3 = fp_hdr["APCOR3"]
+        logger.debug('APCOR3: %s', APCOR3)
+
         try:
             apcor = fp_hdr["APCOR3"]
         except Exception as e:
@@ -560,24 +566,46 @@ def calibrate(tile, outdir):
         t["MAG_3_CAL"] = [0.0] * len(t)
         t["MAG_ERR_3_CAL"] = [0.0] * len(t)
 
+        # deal with -ve flux; = 0 not covered
         ids = np.where((t["Aper_flux_3"] < 0.0))[0]
-        t["MAG_3_CAL"][ids] = \
-            (-1 * (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
-             2.5 * np.log10(expt) - apcor))
 
+        # t["MAG_3_CAL"][ids] = \
+        #   (-1 * (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
+        #   2.5 * np.log10(expt) - apcor))
+
+        # log10 (abs(flux))
+        t["MAG_3_CAL"][ids] = \
+         -1 * (zpt - 2.5*np.log10(np.fabs(t["Aper_flux_3"][ids])) - apcor)
+
+        # add flux error so that magerr can be calculated
         fluxes = t["Aper_flux_3"][ids] + t["Aper_flux_3_err"][ids]
+
+        #t["MAG_ERR_3_CAL"][ids] = \
+        #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
+        #     2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
+
         t["MAG_ERR_3_CAL"][ids] = \
-            (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
-             2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
+             (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
+             - np.fabs(t["MAG_3_CAL"][ids])
+
 
         ids = np.where((t["Aper_flux_3"] > 0.0))[0]
+
         t["MAG_3_CAL"][ids] = \
-            (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
-             2.5 * np.log10(expt) - apcor)
+            (zpt - 2.5*np.log10(np.fabs(t["Aper_flux_3"][ids])) - apcor)
+
+        #t["MAG_3_CAL"][ids] = \
+        #    (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
+        #     2.5 * np.log10(expt) - apcor)
+
         fluxes = t["Aper_flux_3"][ids] + t["Aper_flux_3_err"][ids]
+
+        #t["MAG_ERR_3_CAL"][ids] = \
+        #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
+        #     2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
         t["MAG_ERR_3_CAL"][ids] = \
-            (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
-             2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
+            (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
+            - np.fabs(t["MAG_3_CAL"][ids])
 
         calfile = fp_file[:-5] + "_cal.fits"
         t.write(calfile, overwrite=True)
