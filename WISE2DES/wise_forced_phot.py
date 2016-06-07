@@ -76,7 +76,6 @@ import astropy.io.fits as fits
 from astropy import wcs
 from astropy.utils.exceptions import AstropyWarning
 
-
 # local libs
 sys.path.append('/home/rgm/soft/python/lib/')
 
@@ -87,7 +86,6 @@ from librgm.rd_config_wsdb import rd_config_wsdb
 from parse_config import *
 
 warnings.filterwarnings('ignore', category=AstropyWarning, append=True)
-
 
 def create_logger(logdir=None, loglevel=logging.INFO):
     """
@@ -501,7 +499,7 @@ def mk_cats(tile, rcore, outdir, config_file):
     return outpath
 
 
-def calibrate(tile, outdir):
+def calibrate(tile, outdir, config_file=None):
 
     # Calibrate the cats, just doing aper 3 for now
     # Negative flux -> negative magnitude
@@ -511,6 +509,10 @@ def calibrate(tile, outdir):
     import numpy as np
 
     logger = logging.getLogger()
+
+    config = configparser.RawConfigParser()
+    config.read(config_file)
+    release = config.get("des", "release")
 
     for band in ["g", "r", "i", "z", "Y"]:
         """
@@ -552,7 +554,7 @@ def calibrate(tile, outdir):
         zpt = fp_hdr["SEXMGZPT"]
         expt = fp_hdr["EXPTIME"]
         apcor3 = fp_hdr["APCOR3"]
-        logger.debug('APCOR3: %s', APCOR3)
+        logger.debug('APCOR3: %s', apcor3)
 
         try:
             apcor = fp_hdr["APCOR3"]
@@ -694,7 +696,7 @@ def phot_check(tile, outdir):
         plt.axhline(0.0)
         plt.show()
 
-def WISE_match(tile, outdir, width_arcsecs = 5.0):
+def WISE_match(tile, outdir, width_arcsecs = 5.0, checkplots=False):
 
     import numpy as np
     from astropy.table import Table, hstack
@@ -704,18 +706,21 @@ def WISE_match(tile, outdir, width_arcsecs = 5.0):
     print('Reading: ', infile)
     t = Table.read(outdir + tile + "_WISEfp_DEScat.fits")
 
-    t = srpylib.WISE_match(t, "RA_CALC_G", "DEC_CALC_G", width = width_arcsecs/3600.0, c_graph = False, DES_box = True)
-    t.write(outdir + tile + "_WISEfp_DEScat_WISE_match.fits")
+    t = srpylib.WISE_match(t, "RA_CALC_G", "DEC_CALC_G",
+         width = width_arcsecs/3600.0,
+         c_graph = checkplots, DES_box = True)
 
+    t.write(outdir + tile + "_WISEfp_DEScat_WISE_match.fits", overwrite=True)
 
-
-def nearest_neighbour(tile, outdir):
+def nearest_neighbour(tile, outdir, checkplots=False):
 
     from astropy.table import Table, hstack
     import srpylib
     import match_lists
     import matplotlib.pyplot as plt
     import numpy as np
+
+    db, host, user, password, db_table = rd_config_wsdb(table='wise')
 
     t = Table.read(outdir + tile + "_WISEfp_DEScat.fits")
 
@@ -728,15 +733,16 @@ def nearest_neighbour(tile, outdir):
 
     match_distance = dists[:,1]*3600.0
 
-    plt.axvline(6.1)
-    plt.axvline(6.4)
-    plt.axvline(6.5)
-    plt.axvline(12.0)
-    plt.hist(match_distance, bins = 100)
-    plt.xlabel('Match Distance, "')
-    plt.ylabel("Number")
-    plt.title("Nearest Neighbours, " + tile)
-    plt.show()
+    if checkplots:
+        plt.axvline(6.1)
+        plt.axvline(6.4)
+        plt.axvline(6.5)
+        plt.axvline(12.0)
+        plt.hist(match_distance, bins = 100)
+        plt.xlabel('Match Distance, "')
+        plt.ylabel("Number")
+        plt.title("Nearest Neighbours, " + tile)
+        plt.show()
 
     print("Median Distance:", np.median(match_distance))
 
@@ -806,7 +812,7 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
         outpath = mk_cats(tilename, rcore, outdir, config_file)
 
         logger.info('Calibrate Tile: %s', tilename)
-        calibrate(tilename, outpath)
+        calibrate(tilename, outpath, config_file=config_file)
 
         logger.info('Join Tile catalogues: %s', tilename)
         join_cats(tilename, outpath)
@@ -815,10 +821,10 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
         add_DEScat(tilename, outpath)
 
         logger.info('Calibration check plots: %s', tilename)
-        phot_check(tilename, outpath)
+        if checkplots: phot_check(tilename, outpath)
 
         logger.info('Pairwise match to WISE: %s', tilename)
-        WISE_match(tilename, outpath)
+        WISE_match(tilename, outpath, checkplots=checkplots)
 
         logger.info('WISE pairwise self-neighbour plot: %s', tilename)
         nearest_neighbour(tilename, outpath)
@@ -1033,6 +1039,14 @@ def parse_args(version=None):
     )
 
     parser.add_argument(
+        '--overwrite', action='store_true', default=False,
+        help='overwrite existing output data files')
+
+    parser.add_argument(
+        '--checkplots', action='store_true', default=False,
+        help='create check plots')
+
+    parser.add_argument(
         '--version', action='store_const', default=False, const=True,
         help='show the version')
 
@@ -1106,9 +1120,11 @@ if __name__ == '__main__':
     single = False
     args = parse_args(version=None)
 
+    checkplots = args.checkplots
     nworkers = args.nworkers
     nskip = args.skip
     modulo = args.modulo
+    overwrite = args.overwrite
     remainder = args.remainder
     remainder = min(remainder, modulo - 1)
 
