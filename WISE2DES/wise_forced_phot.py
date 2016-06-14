@@ -16,7 +16,8 @@ Check for stagnant lockfile and also maybe completed files
 Problems:
 
 Could have a Deadlock
-It was not caused by logging; it occurs with files are being skipped; not sure
+It was not caused by logging;
+It occurs with files are being skipped; not sure why
 
 
 TODO:
@@ -72,9 +73,12 @@ import subprocess
 
 # 3rd party libs
 import numpy as np
+
 import astropy.io.fits as fits
 from astropy import wcs
+from astropy.table import Table
 from astropy.utils.exceptions import AstropyWarning
+
 
 # local libs
 sys.path.append('/home/rgm/soft/python/lib/')
@@ -223,7 +227,9 @@ def get_cats_status(tilename=None,
     IMCORE_LIST = config.get("casu", "imcore_list")
     CLASSIFY = config.get("casu", "classify")
 
-    DATAPATH = config.get("des", "datapath")
+    datpath = config.get("des", "datapath")
+    # should add trailing slash if not present
+
     OUTDIR = config.get("des", "outpath")
 
     # this is a bit of a mess
@@ -258,7 +264,7 @@ def get_cats_status(tilename=None,
     for band in wavebands:
 
         logger.debug("Processing band: %s", band)
-        im_file = DATAPATH + tilename + "/" + tilename + \
+        im_file = datapath + tilename + "/" + tilename + \
              "_" + band + ".fits.fz"
         logger.debug('Processing file: %s %s', im_file, band)
 
@@ -388,7 +394,7 @@ def get_coords(infile=None, coord_file=None, tilename=None):
     return coord_file
 
 
-def mk_cats(tile, rcore, outdir, config_file):
+def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
     """
 
     """
@@ -407,7 +413,7 @@ def mk_cats(tile, rcore, outdir, config_file):
     IMCORE_LIST = config.get("casu", "imcore_list")
     CLASSIFY = config.get("casu", "classify")
 
-    DATAPATH = config.get("des", "datapath")
+    datapath = config.get("des", "datapath")
     OUTPATH = config.get("des", "outpath")
     outdir = OUTPATH
     outpath = outdir + '/' + tile + '/'
@@ -433,7 +439,7 @@ def mk_cats(tile, rcore, outdir, config_file):
     # could skip getting the coord file
     if not os.path.isfile(coord_file):
         logger.debug('coord_file: %s  Does not exist', coord_file)
-        infile = DATAPATH + tile + "/" + tile + "_z.fits.fz"
+        infile = datapath + tile + "/" + tile + "_z.fits.fz"
 
         if os.path.isfile(infile):
             logger.debug('footprint file : %s  exists', infile)
@@ -454,7 +460,7 @@ def mk_cats(tile, rcore, outdir, config_file):
 
         logger.debug('Processing band: %s rcore: %s', band, str(rcore))
 
-        im_file = DATAPATH + tile + "/" + tile + "_" + band + ".fits.fz"
+        im_file = datapath + tile + "/" + tile + "_" + band + ".fits.fz"
         logger.info('Processing file: %s %s', im_file, band)
 
         outfile = outpath + tile + "_WISEfp_" + band + ".fits"
@@ -478,12 +484,12 @@ def mk_cats(tile, rcore, outdir, config_file):
         if not os.path.exists(IMCORE_LIST):
             print('File does not exist:', IMCORE_LIST)
 
-        if os.path.exists(outfile):
+        if os.path.exists(outfile) and not overwrite:
             print('Output file already exists:', outfile)
             print('Skipping')
             # continue
 
-        if not os.path.exists(outfile):
+        if not os.path.exists(outfile) or overwrite:
 
             logger.info('Starting IMCORE_LIST on %s: ', im_file)
             subprocess.call([IMCORE_LIST, im_file, "noconf",
@@ -498,8 +504,7 @@ def mk_cats(tile, rcore, outdir, config_file):
 
     return outpath
 
-
-def calibrate(tile, outdir, config_file=None):
+def calibrate(tile, outdir, config_file=None, overwrite=False):
 
     # Calibrate the cats, just doing aper 3 for now
     # Negative flux -> negative magnitude
@@ -512,6 +517,7 @@ def calibrate(tile, outdir, config_file=None):
 
     config = configparser.RawConfigParser()
     config.read(config_file)
+
     release = config.get("des", "release")
 
     for band in ["g", "r", "i", "z", "Y"]:
@@ -534,8 +540,7 @@ def calibrate(tile, outdir, config_file=None):
                 del t[col]
 
         # Add coords
-        im_file = "/data/desardata/" + release + "/" + \
-            tile + "/" + tile + "_" + band + ".fits.fz"
+        im_file = datapath + tile + "/" + tile + "_" + band + ".fits.fz"
         logger.info('Reading: %s', im_file)
         with fits.open(im_file) as fhlist:
             des_hdr = fhlist[1].header
@@ -553,69 +558,114 @@ def calibrate(tile, outdir, config_file=None):
         skyn = fp_hdr["SKYNOISE"]
         zpt = fp_hdr["SEXMGZPT"]
         expt = fp_hdr["EXPTIME"]
-        apcor3 = fp_hdr["APCOR3"]
-        logger.debug('APCOR3: %s', apcor3)
 
-        try:
-            apcor = fp_hdr["APCOR3"]
-        except Exception as e:
-            print("Unexpected error:", sys.exc_info()[0], fp_file)
-            traceback.print_exc(file=sys.stdout)
-            raise
+        aperlist = ['1','2','3','3','4','5','6','7']
 
-        # extinction and airmass - in theory included in the DES zeropoints
+        for aper in aperlist:
 
-        t["MAG_3_CAL"] = [0.0] * len(t)
-        t["MAG_ERR_3_CAL"] = [0.0] * len(t)
+            apcor = 0.0
+            if aper <= '7':
+                apcor = fp_hdr["APCOR" + aper]
+            logger.debug('APCOR%s: %s', aper, apcor)
 
-        # deal with -ve flux; = 0 not covered
-        ids = np.where((t["Aper_flux_3"] < 0.0))[0]
+            try:
+                apcor = fp_hdr["APCOR" + aper]
+            except Exception as e:
+                print("Unexpected error:", sys.exc_info()[0], fp_file)
+                traceback.print_exc(file=sys.stdout)
+                raise
 
-        # t["MAG_3_CAL"][ids] = \
-        #   (-1 * (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
-        #   2.5 * np.log10(expt) - apcor))
+            # extinction and airmass -
+            #    in theory included in the DES zeropoints
 
-        # log10 (abs(flux))
-        t["MAG_3_CAL"][ids] = \
-         -1 * (zpt - 2.5*np.log10(np.fabs(t["Aper_flux_3"][ids])) - apcor)
+            t["MAG_" + aper + "_CAL"] = [0.0] * len(t)
+            t["MAG_ERR_" + aper + "_CAL"] = [0.0] * len(t)
+
+            # deal with -ve flux; = 0 not covered
+            ids = np.where((t["Aper_flux_" + aper] < 0.0))[0]
+
+            # t["MAG_3_CAL"][ids] = \
+            #   (-1 * (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
+            #   2.5 * np.log10(expt) - apcor))
+
+            # log10 (abs(flux))
+            t["MAG_" + aper + "_CAL"][ids] = \
+               -1 * \
+               (zpt - 2.5*np.log10(np.fabs(t["Aper_flux_" + aper][ids])) \
+              - apcor)
+
+            # add flux error so that magerr can be calculated
+            fluxes = t["Aper_flux_" + aper][ids] + \
+                t["Aper_flux_" + aper + "_err"][ids]
+
+            # t["MAG_ERR_3_CAL"][ids] = \
+            #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
+            #    2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
+
+            t["MAG_ERR_" + aper + "_CAL"][ids] = \
+                (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
+                - np.fabs(t["MAG_" + aper + "_CAL"][ids])
+
+            ids = np.where((t["Aper_flux_" + aper] > 0.0))[0]
+
+            t["MAG_" + aper + "_CAL"][ids] = \
+                (zpt - \
+                 2.5 * np.log10(np.fabs(t["Aper_flux_" + aper][ids])) - apcor)
+
+            # t["MAG_3_CAL"][ids] = \
+            #    (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
+            #     2.5 * np.log10(expt) - apcor)
+
+            fluxes = t["Aper_flux_" + aper][ids] + \
+                t["Aper_flux_" + aper + "_err"][ids]
+
+            # t["MAG_ERR_3_CAL"][ids] = \
+            #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
+            #     2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
+            t["MAG_ERR_" + aper + "_CAL"][ids] = \
+               (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
+               - np.fabs(t["MAG_" + aper + "_CAL"][ids])
+
+        # compute the Kron magnitude
+
+        t["MAG_KRON_CAL"] = [0.0] * len(t)
+        t["MAG_ERR_KRON_CAL"] = [0.0] * len(t)
+
+        ids = np.where((t['Kron_flux'] < 0.0))[0]
+
+        t["MAG_KRON_CAL"][ids] = \
+               -1 * \
+               (zpt - 2.5*np.log10(np.fabs(t["Kron_flux"][ids])) \
+              - apcor)
 
         # add flux error so that magerr can be calculated
-        fluxes = t["Aper_flux_3"][ids] + t["Aper_flux_3_err"][ids]
+        fluxes = t["Kron_flux"][ids] + \
+                 t["Kron_flux_err"][ids]
 
-        #t["MAG_ERR_3_CAL"][ids] = \
-        #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
-        #     2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
+        t["MAG_ERR_KRON_CAL"][ids] = \
+                (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
+                - np.fabs(t["MAG_KRON_CAL"][ids])
 
-        t["MAG_ERR_3_CAL"][ids] = \
-             (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
-             - np.fabs(t["MAG_3_CAL"][ids])
+        ids = np.where((t["Kron_flux"] > 0.0))[0]
 
+        t["MAG_KRON_CAL"][ids] = \
+                (zpt - \
+                 2.5 * np.log10(np.fabs(t["Kron_flux"][ids])) - apcor)
 
-        ids = np.where((t["Aper_flux_3"] > 0.0))[0]
+        fluxes = t["Kron_flux"][ids] + \
+                 t["Kron_flux_err"][ids]
 
-        t["MAG_3_CAL"][ids] = \
-            (zpt - 2.5*np.log10(np.fabs(t["Aper_flux_3"][ids])) - apcor)
-
-        #t["MAG_3_CAL"][ids] = \
-        #    (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
-        #     2.5 * np.log10(expt) - apcor)
-
-        fluxes = t["Aper_flux_3"][ids] + t["Aper_flux_3_err"][ids]
-
-        #t["MAG_ERR_3_CAL"][ids] = \
-        #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
-        #     2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
-        t["MAG_ERR_3_CAL"][ids] = \
-            (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
-            - np.fabs(t["MAG_3_CAL"][ids])
+        t["MAG_ERR_KRON_CAL"][ids] = \
+               (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
+               - np.fabs(t["MAG_KRON_CAL"][ids])
 
         calfile = fp_file[:-5] + "_cal.fits"
-        t.write(calfile, overwrite=True)
+        t.write(calfile, overwrite=overwrite)
 
         logger.info('Calibration complete: %s', calfile)
 
 
-def join_cats(tile, outdir):
+def join_cats(tile, outdir, overwrite=False):
     """
 
     """
@@ -639,12 +689,15 @@ def join_cats(tile, outdir):
         t_out = hstack([t_out, t])
 
     outfile = outdir + tile + "_WISEfp.fits"
-    t_out.write(outfile, overwrite=True)
+    # add a counter to the WISE list
+    t_out["WISE_NUM"] = np.arange(1, len(t_out)+1)
+    t_out.write(outfile, overwrite=overwrite)
 
     logger.info('Join complete: %s', outfile)
 
 
-def add_DEScat(tile, outdir):
+def add_DEScat(tile, outdir, filename_suffix='_WISEfp',
+               overwrite=False):
 
 
     from astropy.table import Table, hstack
@@ -656,7 +709,11 @@ def add_DEScat(tile, outdir):
 
     release = config.get("des", "release")
 
-    t_cat = Table.read("/data/desardata/" + release + "/" + tile + "/" + tile + ".fits")
+    infile = datapath + tile + "/" + tile + ".fits"
+
+    logger.info('Read: %s', infile)
+
+    t_cat = Table.read(infile)
     t_fp = Table.read(outdir + tile + "_WISEfp.fits")
 
     dists, inds = match_lists.match_lists(t_cat["ALPHAWIN_J2000_G"].data, t_cat["DELTAWIN_J2000_G"].data, t_fp["RA_CALC_G"].data, t_fp["DEC_CALC_G"].data, 5.0/3600.0, 1)
@@ -665,7 +722,8 @@ def add_DEScat(tile, outdir):
     t_cat = t_cat[ids]
     t_fp = t_fp[inds[ids]]
     t_out = hstack([t_fp, t_cat])
-    t_out.write(outdir + tile + "_WISEfp_DEScat.fits", overwrite = True)
+    t_out.write(outdir + tile + "_WISEfp_DEScat.fits",
+        overwrite=overwrite)
 
 
 
@@ -696,7 +754,8 @@ def phot_check(tile, outdir):
         plt.axhline(0.0)
         plt.show()
 
-def WISE_match(tile, outdir, width_arcsecs = 5.0, checkplots=False):
+def WISE_match(tile, outdir, width_arcsecs = 5.0,
+               checkplots=False, overwrite=False):
 
     import numpy as np
     from astropy.table import Table, hstack
@@ -710,7 +769,8 @@ def WISE_match(tile, outdir, width_arcsecs = 5.0, checkplots=False):
          width = width_arcsecs/3600.0,
          c_graph = checkplots, DES_box = True)
 
-    t.write(outdir + tile + "_WISEfp_DEScat_WISE_match.fits", overwrite=True)
+    t.write(outdir + tile + "_WISEfp_DEScat_WISE_match.fits",
+        overwrite=overwrite)
 
 def nearest_neighbour(tile, outdir, checkplots=False):
 
@@ -748,7 +808,7 @@ def nearest_neighbour(tile, outdir, checkplots=False):
 
 
 def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
-                     config_file=None):
+                     config_file=None, start_point=None):
     """
 
     need to review the path munging and flow
@@ -761,6 +821,9 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
     logger = logging.getLogger()
     logger.info('Starting Tile: %s', tilename)
 
+    if start_point is not None:
+        logger.info('Processing start point: %s', start_point)
+
     logger.debug('overwrite: %s', overwrite)
     logger.debug('dryrun: %s', dryrun)
 
@@ -768,7 +831,7 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
     config = configparser.RawConfigParser()
     config.read(config_file)
 
-    DATAPATH = config.get("des", "datapath")
+    datapath = config.get("des", "datapath")
     OUTDIR = config.get("des", "outpath")
 
     logger.info('OUTDIR: %s', OUTDIR)
@@ -808,26 +871,32 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
             traceback.print_exc(file=sys.stdout)
             raise
 
-        logger.info('Make the list driven catalogues: %s', tilename)
-        outpath = mk_cats(tilename, rcore, outdir, config_file)
+        start_point = 'mk_cats'
+        if start_point == 'mk_cats':
+            logger.info('Make the list driven catalogues: %s', tilename)
+            outpath = mk_cats(tilename, rcore, outdir, config_file,
+                              overwrite=overwrite)
 
-        logger.info('Calibrate Tile: %s', tilename)
-        calibrate(tilename, outpath, config_file=config_file)
+            logger.info('Calibrate Tile: %s', tilename)
+            calibrate(tilename, outpath, config_file=config_file,
+                      overwrite=overwrite)
 
-        logger.info('Join Tile catalogues: %s', tilename)
-        join_cats(tilename, outpath)
+            logger.info('Join Tile catalogues: %s', tilename)
+            join_cats(tilename, outpath, overwrite=overwrite)
+
 
         logger.info('Pairwise match to DES catalogues: %s', tilename)
-        add_DEScat(tilename, outpath)
+        add_DEScat(tilename, outpath, overwrite=overwrite)
 
         logger.info('Calibration check plots: %s', tilename)
         if checkplots: phot_check(tilename, outpath)
 
         logger.info('Pairwise match to WISE: %s', tilename)
-        WISE_match(tilename, outpath, checkplots=checkplots)
+        WISE_match(tilename, outpath, checkplots=checkplots,
+                   overwrite=overwrite)
 
         logger.info('WISE pairwise self-neighbour plot: %s', tilename)
-        nearest_neighbour(tilename, outpath)
+        nearest_neighbour(tilename, outpath, overwrite=overwrite)
 
         logger.info('Completed Tile:%s', tilename)
 
@@ -999,11 +1068,14 @@ def parse_args(version=None):
     import sys
     import argparse
 
+
     description = "Parse command line arguements"
 
+    # use formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    # so that --help lists the defaults
     parser = argparse.ArgumentParser(
         description=description,
-    )
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # parser.add_argument(
     #    'config_file', type=str, nargs='?',
@@ -1013,24 +1085,23 @@ def parse_args(version=None):
 
     parser.add_argument(
         '--nworkers', type=int, action='store', default=0,
-        help='integer number of worker processes: [default=0=max]')
+        help='integer number of worker processes')
 
     parser.add_argument(
         '--skip', type=int, action='store', default=0,
-        help='skip n tiles: [default=0]')
+        help='skip n tiles')
 
     parser.add_argument(
         '--count', type=int, action='store', default=0,
-        help='count tiles and exit: [default = 0]')
+        help='count tiles and exit')
 
     parser.add_argument(
         '--modulo', type=int, action='store', default=0,
-        help='process modulo n tiles: [default = 0]')
+        help='process modulo n tiles')
 
     parser.add_argument(
         '--remainder', type=int, action='store', default=0,
-        help='modulus remainder to us: [default = 0; max = modulo -1 ]')
-
+        help='modulus remainder to us: [maximum = MODULO -1 ]')
 
     parser.add_argument(
         '-l', '--log_file', type=str, action='store', default=None,
@@ -1054,19 +1125,48 @@ def parse_args(version=None):
         '--tilename', dest='tilename', action='store',
         help='tilename overrides tilename in config file')
 
+    parser.add_argument(
+        '--tilelistfile', action='store', default=None,
+        help='file contain list of tilenames; astropy table formats')
+
     parser.add_argument("--debug", action='store_true', default=False,
                         dest='debug', help="debug option; logging level DEBUG")
 
+    parser.add_argument(
+        '--decmin', action='store', default=-90.0,
+        help='Tile centre minimum  Declination')
+
+    parser.add_argument(
+        '--decmax', action='store', default=90.0,
+        help='Tile centre maximum  Declination')
+
+    parser.add_argument(
+        '--ramin', action='store', default=0.0,
+        help='Tile centre minimum  RA')
+
+    parser.add_argument(
+        '--ramax', action='store', default=24.0,
+        help='Tile centre maximum  RA')
+
+    parser.add_argument(
+        '--start_point', type=str, action='store', default='mk_cats',
+        choices = ('mk_cats', 'add_DEScat'),
+        help='Starting point for processing'
+    )
+
 
     # WARNING could be a proxy for level 1 verbosity
-    parser.add_argument("--quiet", action='store_true', default=False,
-                        dest='quiet', help="NOT IMPLEMENTED quiet option; logging level WARNING")
-
+    parser.add_argument(
+        "--quiet", action='store_true', default=False,
+        dest='quiet',
+        help="NOT IMPLEMENTED YET: quiet option; logging level WARNING")
 
     parser.add_argument(
         '-v', '--verbosity', type=int, action='store', default=0,
         choices=(0, 1, 2, 3),
-        help='NOT IMPLEMENTED: integer verbosity level: min=0, max=3 [default=0]')
+        help='NOT IMPLEMENTED YET: integer verbosity level')
+
+
 
     parser.add_argument(
         "--force", action='store_true', default=False,
@@ -1092,6 +1192,7 @@ if __name__ == '__main__':
 
     import os
     import time
+    import glob
 
     import multiprocessing
     from multiprocessing import Lock, Process, Queue
@@ -1115,6 +1216,9 @@ if __name__ == '__main__':
     outdir = ""
     config_file = 'wise2des.cfg'
     cfg = parse_config(config_file=config_file, debug=True)
+    release = cfg.get("des", "release")
+    datapath = cfg.get("des", "datapath")
+
 
     tile = None
     single = False
@@ -1128,6 +1232,12 @@ if __name__ == '__main__':
     remainder = args.remainder
     remainder = min(remainder, modulo - 1)
 
+    ramin = float(args.ramin)
+    ramax = float(args.ramax)
+
+    decmin = float(args.decmin)
+    decmax = float(args.decmax)
+
     loglevel = logging.INFO
     if args.debug: loglevel=logging.DEBUG
 
@@ -1138,12 +1248,21 @@ if __name__ == '__main__':
         single = True
         tilename = args.tilename
 
+    if args.tilelistfile is not None:
+        tilelistfile = args.tilelistfile
+        print('Reading:', tilelistfile)
+        tilelist = Table.read(tilelistfile)
+        tilelist.info()
+
+        raw_input("Enter any key to continue: ")
+
+
+
     if single:
         # 24hr edge test
         # if tile is not None:
             # tile = 'DES2327-5248'
             # tile = 'DES2359+0043'
-        overwrite = True
         wise_forced_phot(tilename=tilename, overwrite=overwrite,
                          config_file=config_file)
         raw_input("Enter any key to continue: ")
@@ -1162,25 +1281,63 @@ if __name__ == '__main__':
     # tilelist = Y1A1_GravLense_Tiles
 
     logger.info('Skip n tiles: %s', str(nskip))
-    DOALL = True
-    if DOALL:
-        import glob
-        # glob on DESHHMMsDDMM
-        tilepaths = glob.glob('/data/desardata/Y1A1/DES?????????')
-        i = -1
-        itile = -1
-        ntiles = len(tilepaths)
-        logger.info('Number of input tiles: %s', str(ntiles))
-        tilelist = []
-        for tile in tilepaths[nskip:]:
-            itile = itile + 1
-            if (modulo == 0) or (modulo > 0 and itile % modulo == remainder):
-                i = i + 1
-                tilename = tile.split('/')[-1]
-                tilelist.append(tilename)
-                logger.info('Append to tilelist: %d %s', itile, tilename)
 
-        tilelist = np.sort(tilelist)
+
+    # glob on DESHHMMsDDMM to get a list of tilenames
+    tilepath = datapath
+    print('glob tilepath: ', tilepath)
+    tilepaths = glob.glob(tilepath + '/DES?????????')
+    i = -1
+    itile = -1
+    ntiles = len(tilepaths)
+    logger.info('Number of input tiles: %s', str(ntiles))
+    tilelist = []
+    # apply modulo remainder sceduling for separate processing instances
+    for tile in tilepaths[nskip:]:
+        itile = itile + 1
+        if (modulo == 0) or (modulo > 0 and itile % modulo == remainder):
+            i = i + 1
+            tilename = tile.split('/')[-1]
+            tilelist.append(tilename)
+            logger.info('Append to tilelist: %d %s', itile, tilename)
+
+    tilelist = np.sort(tilelist)
+
+    # limit tiles by ramin and ramax from the tilename based directory
+    # e.g. DESHHMM+DDSS, DES2348-3056
+    #      012345678901
+    itile = -1
+    ikeep = -1
+    tilelist_keep = []
+    print('ramin, ramax: ', ramin, ramax)
+    print('decmin, decmax: ', decmin, decmax)
+    for tile in tilelist:
+      itile = itile + 1
+      print('ramin, ramax: ', ramin, ramax)
+      print('decmin, decmax: ', decmin, decmax)
+      print('tilename:', tile)
+      ratile = float(tile[3:3+2]) + float(tile[5:5+2])/60.0
+      dectile_sign = tile[7:7+1]
+      dectile = float(tile[8:8+2]) + float(tile[10:10+2])/60.0
+      print('dectile_sign:', dectile_sign)
+      if dectile_sign == '-':
+          dectile = -1.0 * dectile
+
+      print(itile, tile, ratile, dectile)
+      if (ratile <= ramax and ratile >= ramin and
+          dectile <= decmax and dectile >= decmin):
+          ikeep = ikeep + 1
+          tilelist_keep.append(tile)
+
+    nkeep = ikeep + 1
+    tilelist = tilelist_keep
+    print('Number of tiles in range: ', nkeep)
+    print(tilelist)
+    print('ramin: ', ramin)
+    print('ramax: ', ramax)
+    print('Number of tiles in range: ', nkeep)
+
+    raw_input("Enter any key to continue: ")
 
     itile = 0
     for tile in tilelist:
@@ -1193,7 +1350,7 @@ if __name__ == '__main__':
     # process the data
     if nworkers == 0:
         nworkers = None
-    overwrite = False
+
     mp_forcephot(tilelist=tilelist, overwrite=overwrite, nworkers=nworkers)
 
     print('Total time elapsed:', time.time() - t0)
