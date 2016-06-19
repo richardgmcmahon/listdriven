@@ -1082,9 +1082,9 @@ def mp_forcephot(tilelist=None,
 
     logger.info('process results')
     for status in iter(done_queue.get, 'STOP'):
-        logger.info('status: %s', status)
+        logger.info('status: %s', str(status))
 
-    logger.info('total time elapsed: %s', time.time() - starttime)
+    logger.info('total time elapsed: %s', str(time.time() - starttime))
 
 
 def parse_args(version=None):
