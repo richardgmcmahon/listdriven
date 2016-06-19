@@ -561,19 +561,18 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
         zpt = fp_hdr["SEXMGZPT"]
         expt = fp_hdr["EXPTIME"]
 
-        aperlist = [1,2,3,4,5,6,7,8,9,10]
+        aperlist = ['1','2','3','4','5','6','7']
 
         for aper in aperlist:
-
+            logger.info('aper %s', aper)
             apcor = 0.0
-            if aper <= 7:
+            if aper <= '7':
                 try:
-                    apcor = fp_hdr["APCOR" + str(aper)]
+                    apcor = fp_hdr["APCOR" + aper]
                 except Exception as e:
                     print("Unexpected error:", sys.exc_info()[0], fp_file)
                     traceback.print_exc(file=sys.stdout)
                     raise
-
             logger.debug('APCOR%s: %s', str(aper), str(apcor))
 
             # extinction and airmass -
