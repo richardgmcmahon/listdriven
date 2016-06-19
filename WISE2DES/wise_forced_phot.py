@@ -62,10 +62,12 @@ from __future__ import unicode_literals
 # standard libs
 import os
 import sys
+import socket
 import time
 
 import logging
 import traceback
+import inspect
 import configparser
 import warnings
 
@@ -559,21 +561,23 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
         zpt = fp_hdr["SEXMGZPT"]
         expt = fp_hdr["EXPTIME"]
 
-        aperlist = ['1','2','3','3','4','5','6','7']
+        aperlist = [1,2,3,4,5,6,7,8,9,10]
 
         for aper in aperlist:
 
             apcor = 0.0
-            if aper <= '7':
-                apcor = fp_hdr["APCOR" + aper]
-            logger.debug('APCOR%s: %s', aper, apcor)
+            if aper <= 7:
+                apcor = fp_hdr["APCOR" + str(aper)]
 
-            try:
-                apcor = fp_hdr["APCOR" + aper]
-            except Exception as e:
-                print("Unexpected error:", sys.exc_info()[0], fp_file)
-                traceback.print_exc(file=sys.stdout)
-                raise
+
+                try:
+                    apcor = fp_hdr["APCOR" + aper]
+                except Exception as e:
+                    print("Unexpected error:", sys.exc_info()[0], fp_file)
+                    traceback.print_exc(file=sys.stdout)
+                    raise
+
+            logger.debug('APCOR%s: %s', str(aper), str(apcor))
 
             # extinction and airmass -
             #    in theory included in the DES zeropoints
@@ -649,15 +653,15 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
         ids = np.where((t["Kron_flux"] > 0.0))[0]
 
         t["MAG_KRON_CAL"][ids] = \
-                (zpt - \
-                 2.5 * np.log10(np.fabs(t["Kron_flux"][ids])) - apcor)
+            (zpt -
+             2.5 * np.log10(np.fabs(t["Kron_flux"][ids])) - apcor)
 
         fluxes = t["Kron_flux"][ids] + \
                  t["Kron_flux_err"][ids]
 
         t["MAG_ERR_KRON_CAL"][ids] = \
-               (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
-               - np.fabs(t["MAG_KRON_CAL"][ids])
+            (zpt - 2.5 * np.log10(np.fabs(fluxes)) - apcor) \
+             - np.fabs(t["MAG_KRON_CAL"][ids])
 
         calfile = fp_file[:-5] + "_cal.fits"
         t.write(calfile, overwrite=overwrite)
@@ -690,15 +694,15 @@ def join_cats(tile, outdir, overwrite=False):
 
     outfile = outdir + tile + "_WISEfp.fits"
     # add a counter to the WISE list
-    t_out["WISE_NUM"] = np.arange(1, len(t_out)+1)
+    t_out["WISE_NUM"] = np.arange(1, len(t_out) + 1)
     t_out.write(outfile, overwrite=overwrite)
 
     logger.info('Join complete: %s', outfile)
 
 
 def add_DEScat(tile, outdir, filename_suffix='_WISEfp',
+               radius_match=5.0,
                overwrite=False):
-
 
     from astropy.table import Table, hstack
     import numpy as np
@@ -716,19 +720,23 @@ def add_DEScat(tile, outdir, filename_suffix='_WISEfp',
     t_cat = Table.read(infile)
     t_fp = Table.read(outdir + tile + "_WISEfp.fits")
 
-    dists, inds = match_lists.match_lists(t_cat["ALPHAWIN_J2000_G"].data, t_cat["DELTAWIN_J2000_G"].data, t_fp["RA_CALC_G"].data, t_fp["DEC_CALC_G"].data, 5.0/3600.0, 1)
+    dists, inds = match_lists.match_lists(
+        t_cat["ALPHAWIN_J2000_G"].data, t_cat["DELTAWIN_J2000_G"].data,
+        t_fp["RA_CALC_G"].data, t_fp["DEC_CALC_G"].data,
+        radius_match / 3600.0, 1)
 
-    ids = np.where( (inds <> len(t_fp)) )[0]
+    ids = np.where((inds != len(t_fp)))[0]
     t_cat = t_cat[ids]
     t_fp = t_fp[inds[ids]]
     t_out = hstack([t_fp, t_cat])
     t_out.write(outdir + tile + "_WISEfp_DEScat.fits",
-        overwrite=overwrite)
+                overwrite=overwrite)
 
 
+def phot_check(tile, outdir, saveplots=False):
+    """
 
-def phot_check(tile, outdir):
-
+    """
     import matplotlib.pyplot as plt
     from astropy.table import Table, hstack
     import numpy as np
@@ -737,26 +745,35 @@ def phot_check(tile, outdir):
 
     for band in ["G", "R", "I", "Z", "Y"]:
         print('band: ', band)
-        ids = np.where( (t["MAG_APER_4_" + band] < 90.0) & (t["MAG_3_CAL_" + band] > 0.0) )[0]
-        plt.plot(t["MAG_APER_4_" + band][ids], t["MAG_3_CAL_" + band][ids]-t["MAG_APER_4_" + band][ids], "k.")
+        ids = np.where((t["MAG_APER_4_" + band] < 90.0) &
+                       (t["MAG_3_CAL_" + band] > 0.0))[0]
+        xdata = t["MAG_APER_4_" + band][ids]
+        ydata = t["MAG_3_CAL_" + band][ids] - t["MAG_APER_4_" + band][ids]
+        plt.plot(xdata, ydata, "k.")
         plt.ylabel("Calculated Magnitude - Catalogue Aperture 4 Magnitude")
         plt.xlabel("Catalogue Aperture 4 Magnitude")
         plt.title(tile + " " + band)
         plt.axhline(0.0)
         plt.show()
 
-
-        ids = np.where( (t["MAG_PSF_" + band] < 90.0) & (t["MAG_3_CAL_" + band] > 0.0) )[0]
-        plt.plot(t["MAG_PSF_" + band][ids], t["MAG_3_CAL_" + band][ids]-t["MAG_PSF_" + band][ids], "k.")
+        ids = np.where((t["MAG_PSF_" + band] < 90.0) &
+                       (t["MAG_3_CAL_" + band] > 0.0))[0]
+        plt.plot(t["MAG_PSF_" + band][ids], t["MAG_3_CAL_" +
+            band][ids] - t["MAG_PSF_" + band][ids], "k.")
         plt.ylabel("Calculated Magnitude - Catalogue PSF Magnitude")
         plt.xlabel("Catalogue PSF Magnitude")
         plt.title(tile + " " + band)
         plt.axhline(0.0)
         plt.show()
 
-def WISE_match(tile, outdir, width_arcsecs = 5.0,
-               checkplots=False, overwrite=False):
 
+def WISE_match(tile, outdir, width_arcsecs = 5.0,
+               checkplots=False, saveplots=False,
+               overwrite=False):
+    """
+
+
+    """
     import numpy as np
     from astropy.table import Table, hstack
     import srpylib
@@ -766,14 +783,17 @@ def WISE_match(tile, outdir, width_arcsecs = 5.0,
     t = Table.read(outdir + tile + "_WISEfp_DEScat.fits")
 
     t = srpylib.WISE_match(t, "RA_CALC_G", "DEC_CALC_G",
-         width = width_arcsecs/3600.0,
-         c_graph = checkplots, DES_box = True)
+                           width=width_arcsecs/3600.0,
+                           c_graph=checkplots, DES_box=True)
 
     t.write(outdir + tile + "_WISEfp_DEScat_WISE_match.fits",
         overwrite=overwrite)
 
-def nearest_neighbour(tile, outdir, checkplots=False):
 
+def nearest_neighbour(tile, outdir, checkplots=False):
+    """
+
+    """
     from astropy.table import Table, hstack
     import srpylib
     import match_lists
@@ -784,12 +804,19 @@ def nearest_neighbour(tile, outdir, checkplots=False):
 
     t = Table.read(outdir + tile + "_WISEfp_DEScat.fits")
 
-    ra_min, ra_max, dec_min, dec_max = srpylib.min_max_match(t["RA_CALC_G"], t["DEC_CALC_G"], 1.0, DES_box = True)
+    ra_min, ra_max, dec_min, dec_max = srpylib.min_max_match(
+        t["RA_CALC_G"], t["DEC_CALC_G"], 1.0, DES_box=True
+    )
 
-    query_wise = "select ra, dec FROM allwise.main WHERE ra > " + ra_min + " and ra < " + ra_max + " and dec > " + dec_min + " and dec < " + dec_max
-    RA, DEC = sqlutil.get(query_wise, db=db, host=host, user=user, password=password)
+    query_wise = "select ra, dec FROM allwise.main WHERE ra > " + \
+        ra_min + " and ra < " + ra_max + " and dec > " + dec_min + \
+        " and dec < " + dec_max
+    RA, DEC = sqlutil.get(query_wise, db=db, host=host,
+                          user=user, password=password)
 
-    dists, inds = match_lists.match_lists(t["RA_CALC_G"].data, t["DEC_CALC_G"].data, RA, DEC, 1.0, 2)
+    dists, inds = match_lists.match_lists(
+        t["RA_CALC_G"].data, t["DEC_CALC_G"].data, RA, DEC, 1.0, 2
+    )
 
     match_distance = dists[:,1]*3600.0
 
@@ -798,10 +825,10 @@ def nearest_neighbour(tile, outdir, checkplots=False):
         plt.axvline(6.4)
         plt.axvline(6.5)
         plt.axvline(12.0)
-        plt.hist(match_distance, bins = 100)
-        plt.xlabel('Match Distance, "')
+        plt.hist(match_distance, bins=100)
+        plt.xlabel('Match Distance(")')
         plt.ylabel("Number")
-        plt.title("Nearest Neighbours, " + tile)
+        plt.title("Nearest Neighbours:" + tile)
         plt.show()
 
     print("Median Distance:", np.median(match_distance))
@@ -814,8 +841,6 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
     need to review the path munging and flow
 
     """
-
-    #print('wise_forced_phot:', tilename)
 
     # get the default logger
     logger = logging.getLogger()
@@ -884,14 +909,18 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
             logger.info('Join Tile catalogues: %s', tilename)
             join_cats(tilename, outpath, overwrite=overwrite)
 
-
         logger.info('Pairwise match to DES catalogues: %s', tilename)
-        add_DEScat(tilename, outpath, overwrite=overwrite)
+        radius_match_descat = 5.0
+        logger.info('Pairwise match radius: %s', str(radius_match_descat))
+        add_DEScat(tilename, outpath, radius_match=radius_match_descat,
+            overwrite=overwrite)
 
         logger.info('Calibration check plots: %s', tilename)
-        if checkplots: phot_check(tilename, outpath)
+        if checkplots:
+            phot_check(tilename, outpath)
 
         logger.info('Pairwise match to WISE: %s', tilename)
+        radius_match_wisecat = 5.0
         WISE_match(tilename, outpath, checkplots=checkplots,
                    overwrite=overwrite)
 
@@ -971,9 +1000,11 @@ def worker_tile(work_queue, done_queue):
             sleep_time = 10
             sleep_time = 1
             if sleep_time > 0:
-                logger.info('Sleeping...: %s %s %s', sleep_time, str(iprocess), item)
+                logger.info('Sleeping...: %s %s %s',
+                            sleep_time, str(iprocess), item)
             time.sleep(sleep_time)
-            logger.info('Time elapsed: %s %s' % (time.time() - starttime, item))
+            logger.info('Time elapsed: %s %s' %
+                        (time.time() - starttime, item))
 
     except Exception, e:
         done_queue.put(
@@ -1042,8 +1073,8 @@ def mp_forcephot(tilelist=None,
         work_queue.put('STOP')
         # raw_input("Enter any key to continue: ")
 
-    # from http://stackoverflow.com/questions/20167735/python-multiprocessing-pipe-deadlock
-    # for p in processes:
+    # from http://stackoverflow.com/questions/20167735/
+    # python-multiprocessing-pipe-deadlock
     for workerno, process in enumerate(processes):
         logger.info(
             'Attempting process.join() of workerno {0}'.format(workerno)
@@ -1068,7 +1099,6 @@ def parse_args(version=None):
     import sys
     import argparse
 
-
     description = "Parse command line arguements"
 
     # use formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -1081,7 +1111,6 @@ def parse_args(version=None):
     #    'config_file', type=str, nargs='?',
     #    help='the configuration file'
     # )
-
 
     parser.add_argument(
         '--nworkers', type=int, action='store', default=0,
@@ -1114,8 +1143,12 @@ def parse_args(version=None):
         help='overwrite existing output data files')
 
     parser.add_argument(
-        '--checkplots', action='store_true', default=False,
+        '--checkplots', action='store_true', default=True,
         help='create check plots')
+
+    parser.add_argument(
+        '--saveplots', action='store_true', default=True,
+        help='Save the check plots')
 
     parser.add_argument(
         '--version', action='store_const', default=False, const=True,
@@ -1150,10 +1183,9 @@ def parse_args(version=None):
 
     parser.add_argument(
         '--start_point', type=str, action='store', default='mk_cats',
-        choices = ('mk_cats', 'add_DEScat'),
+        choices=('mk_cats', 'add_DEScat'),
         help='Starting point for processing'
     )
-
 
     # WARNING could be a proxy for level 1 verbosity
     parser.add_argument(
@@ -1165,8 +1197,6 @@ def parse_args(version=None):
         '-v', '--verbosity', type=int, action='store', default=0,
         choices=(0, 1, 2, 3),
         help='NOT IMPLEMENTED YET: integer verbosity level')
-
-
 
     parser.add_argument(
         "--force", action='store_true', default=False,
@@ -1189,7 +1219,6 @@ if __name__ == '__main__':
     """
 
     """
-
     import os
     import time
     import glob
@@ -1199,6 +1228,18 @@ if __name__ == '__main__':
     from multiprocessing import current_process, cpu_count
 
     t0 = time.time()
+
+    pid = os.getpid()
+    print('Current working directory: %s' % (os.getcwd()))
+    print('User: ', os.getenv('USER'))
+    print('Hostname: ', os.getenv('HOSTNAME'))
+    print('Host:     ', os.getenv('HOST'))
+    print('Hostname: ', socket.gethostname())
+    print()
+    print('__file__: ', __file__)
+    print('__name__: ', __name__)
+
+    print(inspect.getsource(inspect.getsource))
 
     nice_level = os.nice(0)
     print('Current level of nice:', nice_level)
@@ -1219,12 +1260,12 @@ if __name__ == '__main__':
     release = cfg.get("des", "release")
     datapath = cfg.get("des", "datapath")
 
-
     tile = None
     single = False
     args = parse_args(version=None)
 
     checkplots = args.checkplots
+    saveplots = args.saveplots
     nworkers = args.nworkers
     nskip = args.skip
     modulo = args.modulo
@@ -1239,7 +1280,8 @@ if __name__ == '__main__':
     decmax = float(args.decmax)
 
     loglevel = logging.INFO
-    if args.debug: loglevel=logging.DEBUG
+    if args.debug:
+        loglevel = logging.DEBUG
 
     create_logger(loglevel=loglevel)
     logger = logging.getLogger()
@@ -1256,8 +1298,6 @@ if __name__ == '__main__':
 
         raw_input("Enter any key to continue: ")
 
-
-
     if single:
         # 24hr edge test
         # if tile is not None:
@@ -1265,10 +1305,8 @@ if __name__ == '__main__':
             # tile = 'DES2359+0043'
         wise_forced_phot(tilename=tilename, overwrite=overwrite,
                          config_file=config_file)
+        logger.info('single tile: %s', str(single))
         raw_input("Enter any key to continue: ")
-
-
-    # multisite()
 
     Y1A1_GravLense_Tiles = ['DES2327-5248', 'DES0406-5414']
 
@@ -1279,9 +1317,7 @@ if __name__ == '__main__':
 
     tilelist = SVA1_WL_TestBed_Tiles
     # tilelist = Y1A1_GravLense_Tiles
-
     logger.info('Skip n tiles: %s', str(nskip))
-
 
     # glob on DESHHMMsDDMM to get a list of tilenames
     tilepath = datapath
@@ -1309,25 +1345,26 @@ if __name__ == '__main__':
     itile = -1
     ikeep = -1
     tilelist_keep = []
-    print('ramin, ramax: ', ramin, ramax)
-    print('decmin, decmax: ', decmin, decmax)
+    print('ramin, ramax:', ramin, ramax)
+    print('decmin, decmax:', decmin, decmax)
     for tile in tilelist:
-      itile = itile + 1
-      print('ramin, ramax: ', ramin, ramax)
-      print('decmin, decmax: ', decmin, decmax)
-      print('tilename:', tile)
-      ratile = float(tile[3:3+2]) + float(tile[5:5+2])/60.0
-      dectile_sign = tile[7:7+1]
-      dectile = float(tile[8:8+2]) + float(tile[10:10+2])/60.0
-      print('dectile_sign:', dectile_sign)
-      if dectile_sign == '-':
-          dectile = -1.0 * dectile
+        itile = itile + 1
+        print('ramin, ramax: ', ramin, ramax)
+        print('decmin, decmax:', decmin, decmax)
+        print('tilename:', tile)
+        ratile = float(tile[3:5]) + float(tile[5:7]) / 60.0
+        dectile_sign = tile[7:8]
+        dectile = float(tile[8:10]) + float(tile[10:12]) / 60.0
+        print('dectile_sign:', dectile_sign)
+        if dectile_sign == '-':
+            dectile = -1.0 * dectile
 
-      print(itile, tile, ratile, dectile)
-      if (ratile <= ramax and ratile >= ramin and
-          dectile <= decmax and dectile >= decmin):
-          ikeep = ikeep + 1
-          tilelist_keep.append(tile)
+        print(itile, tile, ratile, dectile)
+        if (ratile <= ramax and ratile >= ramin and dectile <= decmax and
+            dectile >= decmin
+        ):
+            ikeep = ikeep + 1
+            tilelist_keep.append(tile)
 
     nkeep = ikeep + 1
     tilelist = tilelist_keep
