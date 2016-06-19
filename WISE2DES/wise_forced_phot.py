@@ -567,11 +567,8 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
 
             apcor = 0.0
             if aper <= 7:
-                apcor = fp_hdr["APCOR" + str(aper)]
-
-
                 try:
-                    apcor = fp_hdr["APCOR" + aper]
+                    apcor = fp_hdr["APCOR" + str(aper)]
                 except Exception as e:
                     print("Unexpected error:", sys.exc_info()[0], fp_file)
                     traceback.print_exc(file=sys.stdout)
