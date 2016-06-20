@@ -405,7 +405,7 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
 
     # get the default logger
     logger = logging.getLogger()
-    logger.info('Processing Tile: %s', tile)
+    logger.debug('Processing Tile: %s', tile)
 
     logger.debug('Reading config file: %s', config_file)
 
@@ -533,7 +533,7 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
         """
 
         fp_file = outdir + tile + "_WISEfp_" + band + ".fits"
-        logger.info('Reading: %s', fp_file)
+        logger.debug('Reading: %s', fp_file)
         t = Table.read(fp_file)
 
         # Remove Blanks
@@ -543,7 +543,7 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
 
         # Add coords
         im_file = datapath + tile + "/" + tile + "_" + band + ".fits.fz"
-        logger.info('Reading: %s', im_file)
+        logger.debug('Reading: %s', im_file)
         with fits.open(im_file) as fhlist:
             des_hdr = fhlist[1].header
         w = wcs.WCS(des_hdr, naxis=2)
@@ -561,14 +561,14 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
         zpt = fp_hdr["SEXMGZPT"]
         expt = fp_hdr["EXPTIME"]
 
-        aperlist = ['1','2','3','4','5','6','7']
+        aperlist = [2,3,4,5,6,7]
 
         for aper in aperlist:
-            logger.info('aper %s', aper)
+            logger.debug('aper %s', str(aper))
             apcor = 0.0
-            if aper <= '7':
+            if aper <= 7:
                 try:
-                    apcor = fp_hdr["APCOR" + aper]
+                    apcor = fp_hdr["APCOR" + str(aper)]
                 except Exception as e:
                     print("Unexpected error:", sys.exc_info()[0], fp_file)
                     traceback.print_exc(file=sys.stdout)
@@ -578,53 +578,54 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
             # extinction and airmass -
             #    in theory included in the DES zeropoints
 
-            t["MAG_" + aper + "_CAL"] = [0.0] * len(t)
-            t["MAG_ERR_" + aper + "_CAL"] = [0.0] * len(t)
+            t["MAG_" + str(aper) + "_CAL"] = [0.0] * len(t)
+            t["MAG_ERR_" + str(aper) + "_CAL"] = [0.0] * len(t)
 
             # deal with -ve flux; = 0 not covered
-            ids = np.where((t["Aper_flux_" + aper] < 0.0))[0]
+            ids = np.where((t["Aper_flux_" + str(aper)] < 0.0))[0]
 
             # t["MAG_3_CAL"][ids] = \
             #   (-1 * (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
             #   2.5 * np.log10(expt) - apcor))
 
             # log10 (abs(flux))
-            t["MAG_" + aper + "_CAL"][ids] = \
-               -1 * \
-               (zpt - 2.5*np.log10(np.fabs(t["Aper_flux_" + aper][ids])) \
-              - apcor)
+            t["MAG_" + str(aper) + "_CAL"][ids] = (
+               -1 *
+               (zpt - 2.5*np.log10(np.fabs(t["Aper_flux_" + str(aper)][ids]))
+              - apcor))
 
             # add flux error so that magerr can be calculated
-            fluxes = t["Aper_flux_" + aper][ids] + \
-                t["Aper_flux_" + aper + "_err"][ids]
+            fluxes = t["Aper_flux_" + str(aper)][ids] + \
+                t["Aper_flux_" + str(aper) + "_err"][ids]
 
             # t["MAG_ERR_3_CAL"][ids] = \
             #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
             #    2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
 
-            t["MAG_ERR_" + aper + "_CAL"][ids] = \
+            t["MAG_ERR_" + str(aper) + "_CAL"][ids] = \
                 (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
-                - np.fabs(t["MAG_" + aper + "_CAL"][ids])
+                - np.fabs(t["MAG_" + str(aper) + "_CAL"][ids])
 
-            ids = np.where((t["Aper_flux_" + aper] > 0.0))[0]
+            ids = np.where((t["Aper_flux_" + str(aper)] > 0.0))[0]
 
-            t["MAG_" + aper + "_CAL"][ids] = \
-                (zpt - \
-                 2.5 * np.log10(np.fabs(t["Aper_flux_" + aper][ids])) - apcor)
+            t["MAG_" + str(aper) + "_CAL"][ids] = (
+                (zpt
+                 - 2.5 * np.log10(np.fabs(t["Aper_flux_" + str(aper)][ids]))
+                 - apcor))
 
             # t["MAG_3_CAL"][ids] = \
             #    (zpt - 2.5 * np.log10(np.fabs(t["Aper_flux_3"][ids])) +
             #     2.5 * np.log10(expt) - apcor)
 
-            fluxes = t["Aper_flux_" + aper][ids] + \
-                t["Aper_flux_" + aper + "_err"][ids]
+            fluxes = t["Aper_flux_" + str(aper)][ids] + \
+                t["Aper_flux_" + str(aper) + "_err"][ids]
 
             # t["MAG_ERR_3_CAL"][ids] = \
             #    (zpt - 2.5 * np.log10(np.fabs(fluxes)) +
             #     2.5 * np.log10(expt) - apcor) - np.fabs(t["MAG_3_CAL"][ids])
-            t["MAG_ERR_" + aper + "_CAL"][ids] = \
+            t["MAG_ERR_" + str(aper) + "_CAL"][ids] = \
                (zpt - 2.5*np.log10(np.fabs(fluxes)) - apcor) \
-               - np.fabs(t["MAG_" + aper + "_CAL"][ids])
+               - np.fabs(t["MAG_" + str(aper) + "_CAL"][ids])
 
         # compute the Kron magnitude
 
@@ -662,7 +663,7 @@ def calibrate(tile, outdir, config_file=None, overwrite=False):
         calfile = fp_file[:-5] + "_cal.fits"
         t.write(calfile, overwrite=overwrite)
 
-        logger.info('Calibration complete: %s', calfile)
+        logger.debug('Calibration complete: %s', calfile)
 
 
 def join_cats(tile, outdir, overwrite=False):
@@ -893,10 +894,17 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
             raise
 
         start_point = 'mk_cats'
-        if start_point == 'mk_cats':
+        if start_point == 'mk_cats' or start_point is None:
+            start_point = None
             logger.info('Make the list driven catalogues: %s', tilename)
-            outpath = mk_cats(tilename, rcore, outdir, config_file,
+            # adding Exception handling for multiprocessing
+            try:
+                outpath = mk_cats(tilename, rcore, outdir, config_file,
                               overwrite=overwrite)
+            except Exception as e:
+                print("Unexpected error:", sys.exc_info()[0])
+                traceback.print_exc(file=sys.stdout)
+                raise
 
             logger.info('Calibrate Tile: %s', tilename)
             calibrate(tilename, outpath, config_file=config_file,
@@ -915,13 +923,15 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
         if checkplots:
             phot_check(tilename, outpath)
 
-        logger.info('Pairwise match to WISE: %s', tilename)
-        radius_match_wisecat = 5.0
-        WISE_match(tilename, outpath, checkplots=checkplots,
+        if start_point == 'WISE_match' or start_point is None:
+            start_point = None
+            logger.info('Pairwise match to WISE: %s', tilename)
+            radius_match_wisecat = 5.0
+            WISE_match(tilename, outpath, checkplots=checkplots,
                    overwrite=overwrite)
 
         logger.info('WISE pairwise self-neighbour plot: %s', tilename)
-        nearest_neighbour(tilename, outpath, overwrite=overwrite)
+        nearest_neighbour(tilename, outpath)
 
         logger.info('Completed Tile:%s', tilename)
 
@@ -1139,7 +1149,7 @@ def parse_args(version=None):
         help='overwrite existing output data files')
 
     parser.add_argument(
-        '--checkplots', action='store_true', default=True,
+        '--checkplots', action='store_true', default=False,
         help='create check plots')
 
     parser.add_argument(
@@ -1178,8 +1188,8 @@ def parse_args(version=None):
         help='Tile centre maximum  RA')
 
     parser.add_argument(
-        '--start_point', type=str, action='store', default='mk_cats',
-        choices=('mk_cats', 'add_DEScat'),
+        '--start_point', type=str, action='store', default=None,
+        choices=('mk_cats', 'add_DEScat', 'WISE_match'),
         help='Starting point for processing'
     )
 
