@@ -201,14 +201,34 @@ def create_logger(logdir=None, loglevel=logging.INFO):
 
     return
 
+def check_status_completed(tilename=None, datapath=None):
+    """
+    /data/desardata2/Y1A1/WISE2DES/R4/*/DES*.completed
+
+    returns a list of tiles that are not completed
+
+    could also verify that DES2327-5248_WISEfp_DEScat_WISE_match.fits
+    is valid FITS file
+
+
+    http://docs.astropy.org/en/stable/io/fits/usage/verification.html#verification-using-the-fits-checksum-keyword-convention
+
+
+    """
+
+    return status
 
 def get_cats_status(tilename=None,
                     outdir=None,
                     config_file=None):
-    """Determine if outfile already exists
+    """Determine if outfile catalogue file already exists
 
 
-    returns 1 if data already exists and thus next stage can be skipped
+    returns 1 if output data already exists and thus next stage can be skipped
+    could check that output file is valid
+
+    http://docs.astropy.org/en/stable/io/fits/usage/verification.html#verification-using-the-fits-checksum-keyword-convention
+
 
     """
 
@@ -277,7 +297,7 @@ def get_cats_status(tilename=None,
                 cats_status = cats_status + 1
 
     # could give status per waveband via a dict
-    logger.debug('cats_status: %s', cats_status)
+    logger.debug('cats_status: %s', str(cats_status))
     return cats_status
 
 
@@ -400,12 +420,11 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
     """
 
     """
-
     import math
 
     # get the default logger
     logger = logging.getLogger()
-    logger.debug('Processing Tile: %s', tile)
+    logger.info('Processing Tile: %s', tile)
 
     logger.debug('Reading config file: %s', config_file)
 
@@ -482,7 +501,6 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
 
         if not os.path.exists(coord_file):
             logger.warning('Input coordinate file does not exist: %s', coord_file)
-
         if not os.path.exists(IMCORE_LIST):
             print('File does not exist:', IMCORE_LIST)
 
@@ -787,7 +805,7 @@ def WISE_match(tile, outdir, width_arcsecs = 5.0,
         overwrite=overwrite)
 
 
-def nearest_neighbour(tile, outdir, checkplots=False):
+def nearest_neighbour(tile, outdir, checkplots=False, saveplots=False):
     """
 
     """
@@ -913,10 +931,10 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
             logger.info('Join Tile catalogues: %s', tilename)
             join_cats(tilename, outpath, overwrite=overwrite)
 
-        logger.info('Pairwise match to DES catalogues: %s', tilename)
-        radius_match_descat = 5.0
-        logger.info('Pairwise match radius: %s', str(radius_match_descat))
-        add_DEScat(tilename, outpath, radius_match=radius_match_descat,
+        logger.info('Pairwise match to DES catalogues:%s', tilename)
+        radius_match_des = 5.0
+        logger.info('Pairwise match radius: %s', str(radius_match_des))
+        add_DEScat(tilename, outpath, radius_match=radius_match_des,
             overwrite=overwrite)
 
         logger.info('Calibration check plots: %s', tilename)
@@ -925,10 +943,12 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
 
         if start_point == 'WISE_match' or start_point is None:
             start_point = None
-            logger.info('Pairwise match to WISE: %s', tilename)
-            radius_match_wisecat = 5.0
-            WISE_match(tilename, outpath, checkplots=checkplots,
-                   overwrite=overwrite)
+            logger.info('Pairwise WISE match: %s', tilename)
+            radius_match_wise = 5.0
+            logger.info('Pairwise WISE match radius: %f', radius_match_wise)
+            WISE_match(tilename, outpath, width_arcsecs=radius_match_wise,
+                   checkplots=checkplots,
+                   saveplots=saveplots, overwrite=overwrite)
 
         logger.info('WISE pairwise self-neighbour plot: %s', tilename)
         nearest_neighbour(tilename, outpath)
@@ -949,8 +969,8 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
         open(completedfile, 'a')
 
     # without this things can hang maybe; not sure it helps
-    sleep_time = 1
-    time.sleep(sleep_time)
+    # sleep_time = 1
+    # time.sleep(sleep_time)
 
     return
 
@@ -1003,12 +1023,15 @@ def worker_tile(work_queue, done_queue):
             logger.info("Worker process: {}".format(os.getpid()))
 
             # add a short sleep to avoid some race conditions
-            sleep_time = 10
-            sleep_time = 1
-            if sleep_time > 0:
-                logger.info('Sleeping...: %s %s %s',
-                            sleep_time, str(iprocess), item)
-            time.sleep(sleep_time)
+            sleep = False
+            if sleep is true:
+                sleep_time = 10
+                sleep_time = 1
+                if sleep_time > 0:
+                    logger.info('Sleeping...: %s %s %s',
+                                sleep_time, str(iprocess), item)
+                time.sleep(sleep_time)
+
             logger.info('Time elapsed: %s %s' %
                         (time.time() - starttime, item))
 
@@ -1254,6 +1277,7 @@ if __name__ == '__main__':
     print('Current level of nice:', nice_level)
 
     tile = "DES0453-4457"
+    tile = "DES2327-5248"
     tile = "DES2359+0043"
     # File where you want the input coords saved
     coord_file = tile + '_' + "test_input.txt"
