@@ -390,7 +390,7 @@ def get_coords(infile=None, coord_file=None, tilename=None):
         logger.debug('Writing coords: %s', coord_file)
         try:
             f.write(info)
-            logger.info('Successfully written coordinate file: %s', coord_file)
+            logger.debug('Successfully written coordinate file: %s', coord_file)
         except IOError as e:
             print("I/O error({0}): {1}".format(e.errno, e.strerror))
         except:
@@ -424,7 +424,7 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
 
     # get the default logger
     logger = logging.getLogger()
-    logger.info('Processing Tile: %s', tile)
+    logger.debug('Processing Tile: %s', tile)
 
     logger.debug('Reading config file: %s', config_file)
 
@@ -482,10 +482,10 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
         logger.debug('Processing band: %s rcore: %s', band, str(rcore))
 
         im_file = datapath + tile + "/" + tile + "_" + band + ".fits.fz"
-        logger.info('Processing file: %s %s', im_file, band)
+        logger.debug('Processing file: %s %s', im_file, band)
 
         outfile = outpath + tile + "_WISEfp_" + band + ".fits"
-        logger.info("Output file: %s", outfile)
+        logger.debug("Output file: %s", outfile)
 
         if not os.path.exists(outpath):
             logger.debug('Creating: %s', outpath)
@@ -520,7 +520,7 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
             logger.info('Starting CLASSIFY on %s: ', outfile)
             subprocess.call([CLASSIFY, outfile])
 
-            logger.info('Completed processing: %s', im_file)
+            logger.debug('Completed processing: %s', im_file)
 
     return outpath
 
@@ -712,7 +712,7 @@ def join_cats(tile, outdir, overwrite=False):
     t_out["WISE_NUM"] = np.arange(1, len(t_out) + 1)
     t_out.write(outfile, overwrite=overwrite)
 
-    logger.info('Join complete: %s', outfile)
+    logger.debug('Join complete: %s', outfile)
 
 
 def add_DEScat(tile, outdir, filename_suffix='_WISEfp',
@@ -730,7 +730,7 @@ def add_DEScat(tile, outdir, filename_suffix='_WISEfp',
 
     infile = datapath + tile + "/" + tile + ".fits"
 
-    logger.info('Read: %s', infile)
+    logger.debug('Read: %s', infile)
 
     t_cat = Table.read(infile)
     t_fp = Table.read(outdir + tile + "_WISEfp.fits")
@@ -859,7 +859,7 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
 
     # get the default logger
     logger = logging.getLogger()
-    logger.info('Starting Tile: %s', tilename)
+    logger.debug('Starting Tile: %s', tilename)
 
     if start_point is not None:
         logger.info('Processing start point: %s', start_point)
@@ -1024,7 +1024,7 @@ def worker_tile(work_queue, done_queue):
 
             # add a short sleep to avoid some race conditions
             sleep = False
-            if sleep is true:
+            if sleep:
                 sleep_time = 10
                 sleep_time = 1
                 if sleep_time > 0:
