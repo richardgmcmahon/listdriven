@@ -15,8 +15,20 @@ python check_status_completed.py --help
 from astropy.io import fits
 
 
+
+def check_data(inpath=None, debug=False, fast=False, count=False,
+    ncheckfiles=None, clean=False, suffix=""):
+    """
+
+    e.g.
+
+
+    """
+    import shutil
+
+
 def check_tile(inpath=None, debug=False, fast=False, count=False,
-    ncheckfiles=None, clean=False):
+    ncheckfiles=None, clean=False, checkinputs=False):
     """
 
 
@@ -200,6 +212,9 @@ if __name__ == '__main__':
 
     import argparse
 
+    now = time.localtime(time.time())
+    datestamp = time.strftime("%Y%m%d", now)
+
     description = "Check the status of output files. \n" \
                   + "Note the clean, fast, count options need some \n" \
                   + "further consistency work"
@@ -254,6 +269,8 @@ if __name__ == '__main__':
 
     npass = 0
     nfail = 0
+    logfile = 'logfile_' + datestamp + '.tmp'
+    log = open(logfile, 'w')
     for path in pathlist:
         itile = itile + 1
         print('Processing:', itile, path)
@@ -265,6 +282,7 @@ if __name__ == '__main__':
 
         if nfiles != ncheckfiles:
             nfail = nfail + 1
+            log.write(str(nfail) + ':' + str(path) + ':' + str(nfiles) + '\n')
 
         if debug:
             print(path.split('/'))
@@ -293,8 +311,9 @@ if __name__ == '__main__':
                     if hdulist[ihdu].verify() is not None:
                         print(ihdu, hdulist[ihdu].verify())
 
-      print()
+        print()
 
+    log.close()
     print('Total: ', npass + nfail)
     print('Passed:', npass)
     print('Failed:', nfail)

@@ -68,7 +68,13 @@ import time
 import logging
 import traceback
 import inspect
-import configparser
+
+# ConfigParser is renamed configparser in Python 3 and also 2.7.?
+try:
+    import configparser
+except:
+    import ConfigParser as configparser
+
 import warnings
 
 import subprocess
@@ -83,6 +89,11 @@ from astropy.utils.exceptions import AstropyWarning
 
 
 # local libs
+import make_kernel_catalogues as cl
+
+# help(cl)
+# raw_input("Enter any key to continue: ")
+
 sys.path.append('/home/rgm/soft/python/lib/')
 
 import sqlutil
@@ -203,6 +214,7 @@ def create_logger(logdir=None, loglevel=logging.INFO):
 
 def check_status_completed(tilename=None, datapath=None):
     """
+
     /data/desardata2/Y1A1/WISE2DES/R4/*/DES*.completed
 
     returns a list of tiles that are not completed
@@ -416,6 +428,128 @@ def get_coords(infile=None, coord_file=None, tilename=None):
     return coord_file
 
 
+def get_wcslimits(infile=None, ext=1):
+    """
+
+    """
+    import math
+
+    # get the default logger
+    logger = logging.getLogger()
+
+    with fits.open(infile) as fhlist:
+        hdr = fhlist[1].header
+        w = wcs.WCS(hdr, naxis=2)
+
+    # If this is ever used for non square inmages this needs checking
+    pix_corners = [[0, 0], [0, hdr["NAXIS1"]], [
+        hdr["NAXIS2"], 0], [hdr["NAXIS1"], hdr["NAXIS2"]]]
+    w_corners = w.wcs_pix2world(pix_corners, 1)
+
+    [corner_ra, corner_dec] = zip(*w_corners)
+
+    """
+    corner_ra = sorted(corner_ra)
+    corner_dec = sorted(corner_dec)
+
+    #Take the slightly smaller square inside the not square image
+    ra_min = corner_ra[1]
+    ra_max = corner_ra[2]
+    dec_min = corner_dec[1]
+    dec_max = corner_dec[2]
+    """
+
+    delta_ra = max(corner_ra) - min(corner_ra)
+    delta_dec = max(corner_dec) - min(corner_dec)
+
+    dec_mean = (min(corner_dec) + min(corner_dec)) / 2.0
+    delta_ra = delta_ra * math.cos(math.radians(dec_mean))
+
+    logger.debug('dec_mean: %s', dec_mean)
+    logger.debug('delta_ra, delta_dec: %s; %s', delta_ra, delta_dec)
+
+    # raw_input("Enter any key to continue: ")
+    # Some of these objects won't be on the DES tile so will return infs
+    ra_min = min(corner_ra)
+    ra_max = max(corner_ra)
+    dec_min = min(corner_dec)
+    dec_max = max(corner_dec)
+
+    return ra_min, ra_max, dec_min, dec_max
+
+
+def get_wisecat(infile=None, wise_file=None, tilename=None):
+    """
+    Take DES tile, find all WISE objects on that tile using the tile WCS
+    to determine the footprint.
+
+    e.g.
+    infile = "/data/desardata/Y1A1/" + tile + "/" + tile + "_z.fits.fz"
+    DATAPATH = '/data/desardata/Y1A1/'
+
+    """
+    import math
+
+    logger = logging.getLogger()
+
+    logger.debug('infile: %s', infile)
+    logger.debug('wise_file: %s', wise_file)
+    logger.debug('infile: %s', tilename)
+
+    db, host, user, password, db_table = rd_config_wsdb(table='wise')
+
+    outpath = os.path.dirname(wise_file)
+    if not os.path.exists(outpath):
+        try:
+            os.makedirs(outpath)
+        except Exception as error:
+            logger.exception(error)
+            print("Unexpected error:", sys.exc_info()[0])
+            traceback.print_exc(file=sys.stdout)
+            raise
+
+    logger.debug('Reading image WCS to get corners: %s', infile)
+
+    ra_min, ra_max, dec_min, dec_max = get_wcslimits(infile=infile, ext=1)
+
+    logger.debug('RA range: %f, %f', ra_min, ra_max)
+    logger.debug('Dec range: %f, %f', dec_min, dec_max)
+
+    delta_ra = ra_max - ra_min
+    dec_mean = (dec_min + dec_max) / 2.0
+    delta_ra = delta_ra * math.cos(math.radians(dec_mean))
+
+    query_wise = "SELECT * FROM allwise.main WHERE ra > " + \
+        str(ra_min) + \
+        " AND ra < " + str(ra_max) + " AND dec > " + \
+        str(dec_min) + " AND dec < " + str(dec_max)
+
+    # special case where crossing  24hrs ra > ra_max or ra < ra_min
+    if delta_ra > 180.0:
+
+        query_wise = "SELECT * FROM allwise.main WHERE " + \
+            "(ra > " + str(ra_max) + \
+            " OR ra < " + str(ra_min) + ") AND dec > " + \
+            str(dec_min) + " AND dec < " + str(dec_max)
+
+    logger.debug('query remote db: %s', tilename)
+    logger.debug('SQL: %s', query_wise)
+    result = sqlutil.get(query_wise, db=db, host=host,
+                         user=user, password=password, asDict=True)
+    print('keys:', result.keys())
+    colnames = result.keys
+
+    table = Table(result)
+    logger.info('%s: Number of wise sources: %s', tilename, len(table))
+    table.info('stats')
+
+    table.write(wise_file, overwrite=overwrite)
+
+    status = 1
+
+    return status
+
+
 def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
     """
 
@@ -453,6 +587,7 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
             raise
 
     coord_file = outpath + '/' + tile + '_' + "test_input.txt"
+    wise_file = outpath + '/' + tile + '_' + "ALLWISE.fits"
 
     logger.debug('Checking coord_file: %s', coord_file)
     if os.path.isfile(coord_file):
@@ -473,6 +608,8 @@ def mk_cats(tile, rcore, outdir, config_file, overwrite=False):
             return 'Hello_World'
 
         logger.debug('Get the coordinate list for: %s', infile)
+
+        get_wisecat(infile=infile, wise_file=wise_file, tilename=tile)
 
         get_coords(infile=infile, coord_file=coord_file, tilename=tile)
 
@@ -849,7 +986,8 @@ def nearest_neighbour(tile, outdir, checkplots=False, saveplots=False):
     print("Median Distance:", np.median(match_distance))
 
 
-def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
+def wise_forced_phot(tilename=None, overwrite=False, force=False,
+                     dryrun=False,
                      config_file=None, start_point=None):
     """
 
@@ -877,17 +1015,26 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
     logger.info('OUTDIR: %s', OUTDIR)
     logger.info('tilename: %s', tilename)
 
-    # this is a bit of a mess
     outpath = OUTDIR + '/' + tilename + '/'
-
     logger.info('outpath: %s', outpath)
+    if not os.path.exists(outpath):
+        logger.debug('Creating: %s', outpath)
+        try:
+            os.makedirs(outpath)
+        except Exception as e:
+            print("Unexpected error:", sys.exc_info()[0])
+            traceback.print_exc(file=sys.stdout)
+            raise
 
     lockfile = outpath + tilename + '.lock'
 
     logger.info('lockfile: %s', lockfile)
 
     if os.path.exists(lockfile):
-        logger.info('lockfile exists: ' + lockfile)
+        logger.info('lockfile exists: %s', lockfile)
+        if force:
+            logger.info('removing lockfile: %s', lockfile)
+            os.remove(lockfile)
 
     cats_status = 0
     if not os.path.exists(lockfile):
@@ -975,11 +1122,147 @@ def wise_forced_phot(tilename=None, overwrite=False, dryrun=False,
     return
 
 
+
+
+def mk_descat(tilename=None, overwrite=False, force=False,
+              dryrun=False,
+              config_file=None, start_point=None):
+    """
+
+    need to review the path munging and flow
+
+    """
+
+    # get the default logger
+    logger = logging.getLogger()
+    logger.debug('Starting Tile: %s', tilename)
+
+    if start_point is not None:
+        logger.info('Processing start point: %s', start_point)
+
+    logger.debug('overwrite: %s', overwrite)
+    logger.debug('dryrun: %s', dryrun)
+
+    logger.debug('Reading config file: %s', config_file)
+    config = configparser.RawConfigParser()
+    config.read(config_file)
+
+    datapath = config.get("des", "datapath")
+    OUTDIR = config.get("des", "outpath")
+
+    logger.info('OUTDIR: %s', OUTDIR)
+    logger.info('tilename: %s', tilename)
+
+    # this is a bit of a mess
+    outpath = OUTDIR + '/' + tilename + '/'
+
+    logger.info('outpath: %s', outpath)
+
+    lockfile = outpath + tilename + '.lock'
+
+    logger.info('lockfile: %s', lockfile)
+
+    if os.path.exists(lockfile):
+        logger.info('lockfile exists: %s', lockfile)
+        if force:
+            logger.info('removing lockfile: %s', lockfile)
+            os.remove(lockfile)
+
+    cats_status = 0
+    if not os.path.exists(lockfile):
+        cats_status = get_cats_status(tilename=tilename,
+                                      outdir=outdir,
+                                      config_file=config_file)
+        logger.info('cats_status: %s', cats_status)
+
+    if cats_status != 0:
+        logger.info('Catalogue already completed for Tile:%s', tilename)
+
+    if (cats_status == 0 or
+         overwrite is True) and not os.path.exists(lockfile):
+
+        # create lockfile
+        try:
+            logger.info("Create lockfile: %s", lockfile)
+            open(lockfile, 'wt')
+        except Exception as e:
+            print("Unexpected error:", sys.exc_info()[0])
+            traceback.print_exc(file=sys.stdout)
+            raise
+
+        start_point = 'mk_cats'
+        if start_point == 'mk_cats' or start_point is None:
+            start_point = None
+            logger.info('Make the list driven catalogues: %s', tilename)
+            # adding Exception handling for multiprocessing
+            try:
+                outpath = mk_cats(tilename, rcore, outdir, config_file,
+                              overwrite=overwrite)
+            except Exception as e:
+                print("Unexpected error:", sys.exc_info()[0])
+                traceback.print_exc(file=sys.stdout)
+                raise
+
+            logger.info('Calibrate Tile: %s', tilename)
+            calibrate(tilename, outpath, config_file=config_file,
+                      overwrite=overwrite)
+
+            logger.info('Join Tile catalogues: %s', tilename)
+            join_cats(tilename, outpath, overwrite=overwrite)
+
+        logger.info('Pairwise match to DES catalogues:%s', tilename)
+        radius_match_des = 5.0
+        logger.info('Pairwise match radius: %s', str(radius_match_des))
+        add_DEScat(tilename, outpath, radius_match=radius_match_des,
+            overwrite=overwrite)
+
+        logger.info('Calibration check plots: %s', tilename)
+        if checkplots:
+            phot_check(tilename, outpath)
+
+        if start_point == 'WISE_match' or start_point is None:
+            start_point = None
+            logger.info('Pairwise WISE match: %s', tilename)
+            radius_match_wise = 5.0
+            logger.info('Pairwise WISE match radius: %f', radius_match_wise)
+            WISE_match(tilename, outpath, width_arcsecs=radius_match_wise,
+                   checkplots=checkplots,
+                   saveplots=saveplots, overwrite=overwrite)
+
+        logger.info('WISE pairwise self-neighbour plot: %s', tilename)
+        nearest_neighbour(tilename, outpath)
+
+        logger.info('Completed Tile:%s', tilename)
+
+        if os.path.exists(lockfile):
+            # remove lockfile
+            try:
+                logger.info("Delete lockfile: %s", lockfile)
+                os.remove(lockfile)
+            except Exception as e:
+                print("Unexpected error:", sys.exc_info()[0])
+                traceback.print_exc(file=sys.stdout)
+                raise
+
+        completedfile = outpath + tilename + '.completed'
+        open(completedfile, 'a')
+
+    # without this things can hang maybe; not sure it helps
+    # sleep_time = 1
+    # time.sleep(sleep_time)
+
+    return
+
+
+
+
 # This is the worker function
-def worker_tile(work_queue, done_queue):
+def worker_tile(work_queue, done_queue, process_kernel=False):
     """
 
     based on website crawler example def worker
+
+    work is done by wise_forced_phot
 
     """
 
@@ -1005,9 +1288,25 @@ def worker_tile(work_queue, done_queue):
 
             # I am not sure where tilename, overwrite and config_file come from
             # maybe use inspect to get the values
-            status_code = wise_forced_phot(tilename=item,
-                                           overwrite=overwrite,
-                                           config_file=config_file)
+
+            if not process_kernel:
+                status_code = wise_forced_phot(tilename=item,
+                                               overwrite=overwrite,
+                                               config_file=config_file)
+            if process_kernel:
+                # create DES coadd catalogs
+                kernel_path = "/data/cl522/deblending_fun/sex.conv"
+                suffix = "_check_DES_kernel"
+                print(tilename)
+                print(outdir)
+                status_code = cl.add_kernel_DEScat(tile=tilename,
+                                                   outdir=outdir,
+                                                   kernel_path=kernel_path,
+                                                   suffix=suffix,
+                                                   release='Y1A1',
+                                                   DETECT_THRESH=10,
+                                                   DEBLEND_MINCONT=1.0)
+
 
             logger.info("Status Code: %s %s", status_code, item)
 
@@ -1044,8 +1343,9 @@ def worker_tile(work_queue, done_queue):
     return True
 
 
-def mp_forcephot(tilelist=None,
+def mp_forcephot(tilelist=None, process_kernel=False,
                  overwrite=False,
+                 force=False,
                  dryrun=False,
                  nworkers=None,
                  loglevel=logging.INFO):
@@ -1088,7 +1388,8 @@ def mp_forcephot(tilelist=None,
         multiprocessing.log_to_stderr(loglevel)
 
         # create progress to run work_tile
-        p = Process(target=worker_tile, args=(work_queue, done_queue))
+        p = Process(target=worker_tile,
+                    args=(work_queue, done_queue, process_kernel))
 
         logger.info('Worker: %s', w + 1)
 
@@ -1128,12 +1429,14 @@ def parse_args(version=None):
     import sys
     import argparse
 
-    description = "Parse command line arguements"
+    description = '''WISE listdriven forced photometry '''
+
+    epilog = "This is just an example of an epilog description"
 
     # use formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # so that --help lists the defaults
     parser = argparse.ArgumentParser(
-        description=description,
+        description=description, epilog=epilog,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # parser.add_argument(
@@ -1162,14 +1465,12 @@ def parse_args(version=None):
         help='modulus remainder to us: [maximum = MODULO -1 ]')
 
     parser.add_argument(
-        '-l', '--log_file', type=str, action='store', default=None,
-        help='filename for storing logging output ' +
-        '[default is to stream to stdout]'
-    )
-
-    parser.add_argument(
         '--overwrite', action='store_true', default=False,
         help='overwrite existing output data files')
+
+    parser.add_argument(
+        "--force", action='store_true', default=False,
+        help="force processing ignoring lockfile or existing data")
 
     parser.add_argument(
         '--checkplots', action='store_true', default=False,
@@ -1213,8 +1514,12 @@ def parse_args(version=None):
     parser.add_argument(
         '--start_point', type=str, action='store', default=None,
         choices=('mk_cats', 'add_DEScat', 'WISE_match'),
-        help='Starting point for processing'
-    )
+        help='Starting point for processing')
+
+    parser.add_argument(
+        '-l', '--log_file', type=str, action='store', default=None,
+        help='filename for storing logging output ' +
+        '[default is to stream to stdout]')
 
     # WARNING could be a proxy for level 1 verbosity
     parser.add_argument(
@@ -1227,9 +1532,10 @@ def parse_args(version=None):
         choices=(0, 1, 2, 3),
         help='NOT IMPLEMENTED YET: integer verbosity level')
 
-    parser.add_argument(
-        "--force", action='store_true', default=False,
-        help="force processing ignoring lockfile or existing data")
+
+    parser.add_argument("--kernel", action='store_true', default=False,
+                        dest='kernel', help="kernel option")
+
 
     args = parser.parse_args()
 
@@ -1281,7 +1587,6 @@ if __name__ == '__main__':
     tile = "DES2359+0043"
     # File where you want the input coords saved
     coord_file = tile + '_' + "test_input.txt"
-    rcore = "5"
 
     # Folder where you want the output cats saved
     outdir = ""
@@ -1289,17 +1594,22 @@ if __name__ == '__main__':
     cfg = parse_config(config_file=config_file, debug=True)
     release = cfg.get("des", "release")
     datapath = cfg.get("des", "datapath")
+    rcore = cfg.get("des", "rcore")
 
     tile = None
     single = False
+
     args = parse_args(version=None)
+
+    overwrite = args.overwrite
+    force = args.force
 
     checkplots = args.checkplots
     saveplots = args.saveplots
+
     nworkers = args.nworkers
     nskip = args.skip
     modulo = args.modulo
-    overwrite = args.overwrite
     remainder = args.remainder
     remainder = min(remainder, modulo - 1)
 
@@ -1316,6 +1626,8 @@ if __name__ == '__main__':
     create_logger(loglevel=loglevel)
     logger = logging.getLogger()
 
+    process_kernel = args.kernel
+
     if args.tilename is not None:
         single = True
         tilename = args.tilename
@@ -1325,7 +1637,6 @@ if __name__ == '__main__':
         print('Reading:', tilelistfile)
         tilelist = Table.read(tilelistfile)
         tilelist.info()
-
         raw_input("Enter any key to continue: ")
 
     if single:
@@ -1333,10 +1644,37 @@ if __name__ == '__main__':
         # if tile is not None:
             # tile = 'DES2327-5248'
             # tile = 'DES2359+0043'
-        wise_forced_phot(tilename=tilename, overwrite=overwrite,
-                         config_file=config_file)
+
+
+        if not process_kernel:
+            wise_forced_phot(tilename=tilename, overwrite=overwrite,
+                             force=force,
+                             config_file=config_file)
+
+        if process_kernel:
+            outdir = "/data/desardata2/kernel_tests/"
+            # this is the standard DES kernel:
+            kernel_path = "/data/cl522/deblending_fun/sex.conv"
+            # this path is for the optimised lens blending kernel: /data/cl522/WISE2DES/kernelised_extraction/13x13_FWHM_9.conv
+
+            # include a suffix for all the files created
+            suffix = "_check_DES_kernel"
+
+            cl.add_kernel_DEScat(tile=tilename,
+                                 outdir=outdir,
+                                 kernel_path=kernel_path,
+                                 suffix=suffix,
+                                 release='Y1A1',
+                                 DETECT_THRESH=10,
+                                 DEBLEND_MINCONT=1.0)
+
+            cl.WISE_kernel_match(tile=tilename,
+                                 width_arcsecs=5.0,
+                                 suffix=suffix)
+
         logger.info('single tile: %s', str(single))
-        raw_input("Enter any key to continue: ")
+        sys.exit()
+
 
     Y1A1_GravLense_Tiles = ['DES2327-5248', 'DES0406-5414']
 
@@ -1418,6 +1756,7 @@ if __name__ == '__main__':
     if nworkers == 0:
         nworkers = None
 
-    mp_forcephot(tilelist=tilelist, overwrite=overwrite, nworkers=nworkers)
+    mp_forcephot(tilelist=tilelist, process_kernel=process_kernel,
+                 overwrite=overwrite, nworkers=nworkers)
 
     print('Total time elapsed:', time.time() - t0)
