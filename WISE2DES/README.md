@@ -3,6 +3,7 @@ WISE FWHM:
 
 http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_5c.html#psf
 
+
     (1)    (2)      (3)      (4)    (5)
     Airy  Airy              FWHM
    radius diameter         (")   
@@ -46,7 +47,8 @@ The radii are:
 
 DES Y1A1+ pixel size is 0.263 arcsec per pixel 
 
-     (1)
+     (1) | (2) | (3) | (4) | (5) |
+	 ---
 DES FWHM(1)     rcore        rcore 
      "       pixels arcsec
 g   0.9       2.0   0.526    3.0  0.789
