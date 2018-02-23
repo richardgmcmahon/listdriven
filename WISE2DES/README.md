@@ -13,13 +13,13 @@ http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_5c.html#psf
 
      (1) | (2) | (3) | (4) | (5) 
    ----- | --- | --- | --- | ----
-   |  Airy  | Airy     |        FWHM
-   | radius | diameter |       
-   |  (")   |
+   |  Airy  | Airy     |        FWHM | 
+   | radius | diameter |       |
+   |  (")   |  |   |
 W1 |  2.11  |  4.22 |  6.1 |  6.1 |  5.8
 W2 |  2.89  |  5.78 |  6.4 |  6.8 |  6.4
 W3 |  7.27  | 14.54 |  6.5 |  7.4 |  6.6
-W4 | 13.90  | 27.80 | 12.0 |      | 11.9
+W4 | 13.90  | 27.80 | 12.0 |   -  | 11.9
 
 
 Optimal detection that maximise Signal/Noise for point sources
