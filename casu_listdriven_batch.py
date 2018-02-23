@@ -805,21 +805,21 @@ def search_catalogue(filename=None, listfile=None, outpath=None, radius=2.0):
       ipos=filename.rfind('/')
       catfile = stagepath + catfile[ipos+1:]
       result=srlib.cat_cal(catfile, ralist, declist, 1, radius = radius)
-      result.write(outfile)
+      if result != None: result.write(outfile)
 
       print('catalogue search completed')
       #key=raw_input("Enter any key to continue: ")
 
     print('args.cache: ',args.cache)
-    if os.path.exists(imagefile) and not args.cache:
+    if os.path.exists(catfile) and not args.cache:
       print('Deleting data files used')
-      print('Remove the image file:' + imagefile)
+      print('Remove the cat file:' + catfile)
       try:
-        os.remove(imagefile)       
+        os.remove(catfile)       
       except OSError as (errno, strerror):
         logdata ="OS error({0}): {1}".format(errno, strerror)
         logger(flogerr, logdata)
-        logdata = "error removing imagefile %s " % imagefile        
+        logdata = "error removing  catfile %s " % catfile        
         logger(flogerr, logdata)
         pass
 
