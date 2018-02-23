@@ -34,7 +34,7 @@ Masci(2008)       radius = 0.67 FWHM
 
 CASU imcore aperture definitions:
 http://casu.ast.cam.ac.uk/surveys-projects/vista/technical/catalogue-generation
-
+```
 The radii are:
 1:  1/2 rcore
 2:  1/sqrt(2) rcore
@@ -49,7 +49,7 @@ The radii are:
 11: 8  rcore
 12: 10 rcore
 13: 12 rcore
-
+```
 
 
 
