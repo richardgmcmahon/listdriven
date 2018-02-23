@@ -4,7 +4,7 @@ WISE FWHM:
 http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_5c.html#psf
 
 
-    (1)    (2)      (3)      (4)    (5)
+    (1)  |  (2)   |   (3) |     (4)  |  (5)
     Airy  Airy              FWHM
    radius diameter         (")   
      (")
