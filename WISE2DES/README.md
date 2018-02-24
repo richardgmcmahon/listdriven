@@ -21,16 +21,16 @@ http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_5c.html#psf
 | W3  |  7.27  | 14.54 |  6.5 |  7.4 |  6.6
 | W4  | 13.90  | 27.80 | 12.0 |   -  | 11.9
 
-```
+
 Optimal detection that maximise Signal/Noise for point sources
 Irwin(1985, CASU) radius = FWHM (diameter = 2 * FWHM) is recommended
 Masci(2008)       radius = 0.67 FWHM
 
-(1,2)) Rayleigh diffraction limit (Airy radius) 1.22 lamdba/telescope diameter
-(3) Wright+2010 http://adsabs.harvard.edu/abs/2010AJ....140.1868W 
-(4) ALLWISE: http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec1_2.html
-(5) Table 1 in Aniano+2011: http://adsabs.harvard.edu/abs/2011PASP..123.1218A
-```
+- (1,2)) Rayleigh diffraction limit (Airy radius) 1.22 lamdba/telescope diameter
+- (3) Wright+2010 http://adsabs.harvard.edu/abs/2010AJ....140.1868W 
+- (4) ALLWISE: http://wise2.ipac.caltech.edu/docs/release/allwise/expsup/sec1_2.html
+- (5) Table 1 in Aniano+2011: http://adsabs.harvard.edu/abs/2011PASP..123.1218A
+
 
 CASU imcore aperture definitions:
 http://casu.ast.cam.ac.uk/surveys-projects/vista/technical/catalogue-generation
