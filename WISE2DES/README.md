@@ -34,6 +34,7 @@ Optimal detection that maximise Signal/Noise for point sources
 
 CASU imcore aperture definitions:
 http://casu.ast.cam.ac.uk/surveys-projects/vista/technical/catalogue-generation
+
 ```
 The radii are:
 1:  1/2 rcore
@@ -69,7 +70,7 @@ Y   0.9       2.0
 Note CASU Classify only computes APCOR upto APER 7 ie. APCOR7; it assumes
 that this recovers 100% of flux and APER8+ are for large extended objects like
 galaxies.
-
+```
 rcore = 2
 Aper2(radius) = 
 Aper3(radius) = 0.53"
@@ -91,3 +92,4 @@ Aper6(radius) =         (2 * 1.4 rcore)
 Aper7(radius) = 3.16"   (4 * rcore)
 Aper8(radius) = 3.95"   (5 * rcore)
 
+```
