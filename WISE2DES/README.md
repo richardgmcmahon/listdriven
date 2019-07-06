@@ -1,25 +1,16 @@
-
-| First Header | Second Header |
-| ------------ | ------------- |
-| Content from cell 1 | Content from cell 2 |
-| Content in the first column | Content in the second column |
-| \- | test |
-
-
 WISE FWHM:
 
 
 http://wise2.ipac.caltech.edu/docs/release/prelim/expsup/sec4_5c.html#psf
 
-| (1) | (2) | (3) | (4) | (5) | (6) |
-| --- | --- | --- | --- | ---- | ---- |
-| \-  |  Airy  | Airy     |        FWHM |  |  |  |
-| \-  | radius | diameter |       | | | | |
-| \-  |  (")   |  |   |. |
-| W1  |  2.11  |  4.22 |  6.1 |  6.1 |  5.8
-| W2  |  2.89  |  5.78 |  6.4 |  6.8 |  6.4
-| W3  |  7.27  | 14.54 |  6.5 |  7.4 |  6.6
-| W4  | 13.90  | 27.80 | 12.0 |   -  | 11.9
+    (1)    (2)      (3)      (4)    (5)
+    Airy  Airy              FWHM
+   radius diameter         (")   
+     (")
+W1  2.11   4.22   6.1   6.1    5.8
+W2  2.89   5.78   6.4   6.8    6.4
+W3  7.27   14.54  6.5   7.4    6.6
+W4 13.90   27.80  12.0         11.9
 
 
 Optimal detection that maximise Signal/Noise for point sources
@@ -55,8 +46,7 @@ The radii are:
 
 DES Y1A1+ pixel size is 0.263 arcsec per pixel 
 
-     (1) | (2) | (3) | (4) | (5) |
-	 ---
+     (1)
 DES FWHM(1)     rcore        rcore 
      "       pixels arcsec
 g   0.9       2.0   0.526    3.0  0.789
